@@ -324,10 +324,31 @@ cdef class Variant:
         return rt_flank
 
     
-    def repeat(self):
-        rep_unit = to_minimal_repeat_unit(self.indel_seq)
+    def count_repeats(self, by_repeat_unit=True):
+        if by_repeat_unit:
+            seq = to_minimal_repeat_unit(self.indel_seq)
+        else:
+            seg = self.indel_seq
+
         lt_flank = self.left_flank()
-        lr_repeat = repeat_counter(rep_unit, lt_flank[::-1])
+        lr_repeat = repeat_counter(seq, lt_flank[::-1])
         rt_flank = self.right_flank()
-        rt_repeat = repeat_counter(rep_unit, rt_flank)
+        rt_repeat = repeat_counter(seq, rt_flank)
+        
         return lr_repeat + rt_repeat
+    
+
+    def is_non_complex_indel(self):
+        i = self.normalize()
+        ref, alt = i.ref, i.alt
+        if len(ref) == len(alt):
+            return False
+        
+        if ref[0] != alt[0]:
+            return False
+        
+        the_shorter = ref if i.is_ins else alt
+        if len(the_shorter) > 1:
+            return False
+        
+        return True

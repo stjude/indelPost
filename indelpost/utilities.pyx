@@ -78,8 +78,13 @@ def match_indels(query, subject, matchby):
         return query.pos == subject.pos
 
     elif matchby == "exact":
-        return (query.chrom == subject.chrom) and (query.pos == subject.pos) and (query.ref == subject.ref) and (query.alt == subject.alt)
-
+        return (
+            (query.chrom == subject.chrom)
+            and (query.pos == subject.pos)
+            and (query.ref == subject.ref)
+            and (query.alt == subject.alt)
+        )
+        
 
 def to_minimal_repeat_unit(seq):
     """Find repeat unit in indel sequence
@@ -116,7 +121,6 @@ def repeat_counter(query_seq, flank_seq):
             break
     
     return count
-
 
 cpdef list get_mapped_subreads(str cigarstring, int aln_start_pos, int aln_end_pos):
     
