@@ -14,7 +14,7 @@ from .utilities import *
 from .localn import findall_mismatches
 from .variant import Variant
 
-
+#@profile
 def hard_phase_nearby_variants(
     target,
     contig,
@@ -29,18 +29,17 @@ def hard_phase_nearby_variants(
 
     if contig.failed or contig.mapq < mapq_thresh:
         return None
-
-    pileup_mapq = np.percentile([read["mapq"] for read in pileup], 15)
+    
+    pileup_mapq = np.percentile([read["mapq"] for read in pileup], 50)
     if pileup_mapq < mapq_thresh:
         return None
 
     variants_to_phase = contig.mismatches + contig.non_target_indels
-
+    
     if not variants_to_phase:
         return None
 
     indexed_contig = contig.genome_indexed_contig
-
     indexed_contig, variants_to_phase = precleaning(
         indexed_contig, variants_to_phase, target.pos, pileup
     )
@@ -204,7 +203,8 @@ def locate_mismatch_cluster_peaks(
             return None
     else:
         return None
-
+    
+    #return (lt_peak_pos - 1, rt_peak_pos + 1)
     if is_tight_cluster(mismatches_to_phase, target, snv_neighborhood):
         return (lt_peak_pos - 1, rt_peak_pos + 1)
     else:
@@ -276,7 +276,7 @@ def is_tight_cluster(mismatches, target, snv_neighborhood):
 
     return False
 
-
+#@profile
 def variants_in_non_target_pileup(pileup, target):
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)

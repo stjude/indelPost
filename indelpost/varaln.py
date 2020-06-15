@@ -285,7 +285,7 @@ class VariantAlignment(object):
 
     def to_complex(
         self,
-        snv_neigborhood=12,
+        snv_neigborhood=15,
         indel_nearby=20,
         indel_repeat_thresh=2,
         mapq_thresh=20,

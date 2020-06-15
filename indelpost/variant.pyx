@@ -1,43 +1,61 @@
-#!/usr/bin/env python3
+# cython: embedsignature=True
 
 from .utilities import *
-
 from pysam.libcfaidx cimport FastaFile
 from pysam.libcbcf cimport VariantRecord, VariantFile
 
 
+#cdef class Variant:
 cdef class Variant:
-    """Represents genomic variants based on VCF record
+    """This class accepts a VCF-style variant representation as input. 
+    Equality holds between :class:`~indelpost.Variant` objects 
+    if they are indentical after normalized. 
+
+    Parameters
+    ----------
+    chrom : string
+        contig name. 
+    
+    pos : integer
+        1-based genomic position.
+    
+    ref : string
+        VCF-style reference allele. 
+    
+    alt : string
+        VCF-style alternative allele.
+    
+    reference : pysam.FastaFile
+        reference FASTA file supplied as 
+        `pysam.FastaFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.FastaFile>`__ object.
+    
+    Raises
+    ------
+    ValueError
+        if the input locus is not defined in the reference or the input alleles contain letters 
+        other than A/a, C/c, G/g, T/t, and N/n. 
+        
     """
     cdef public str chrom, ref, alt
     cdef public int pos
     cdef readonly str _chrom
     cdef public FastaFile  reference
    
-    def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
-        """Constructor 
-        
-        Args:
-            chr (str): chromosome names
-            pos (int): 1-based position
-            ref (str): reference allele
-            alt (str): alternative allele
-            genome (str): path to reference fasta w/ index
-
-        """
-        
+    #def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
+    def __cinit__(self, chrom, pos, ref, alt, reference):
+    #def __init__(self, chrom, pos, ref, alt, reference):
         self._chrom = str(chrom)
         self.pos = pos
         self.ref = ref
         self.alt = alt
         self.reference = reference
 
-        self.chrom = self.format_chrom_name(self._chrom, reference=reference)
+        self.chrom = self.__format_chrom_name(self._chrom, reference=reference)
 
-        self.validate()
+        self.__validate()
 
     
-    def format_chrom_name(self, chrom, **kwargs):
+    def __format_chrom_name(self, chrom, **kwargs):
         if kwargs.get("vcf", False):
             chrom_names = list(kwargs["vcf"].header.contigs)
         elif kwargs.get("reference", False):
@@ -58,39 +76,33 @@ cdef class Variant:
         return chrom
 
 
-    cpdef validate(self):
-        """Check if allele consists of A,C,T,G
-
-        Args:
-            None
-        Returns:
-            None
-        Raises:
-            Exceptions: if None, empty str, str with char other than ACTG 
-        """
-
+    cpdef __validate(self):
         if not self.ref or not self.alt:
-            raise Exception("Allele may not be empty")
+            raise ValueError("Allele may not be empty")
 
         if self.ref == self.alt:
-            raise Exception(
+            raise ValueError(
                 "Not a variant: reference allele and alternate allele may not be identical"
             )
 
         bases = {"A", "C", "T", "G", "N", "a", "t", "c", "g", "n"}
         if not set(list(self.ref)) <= bases or not set(list(self.alt)) <= bases:
-            raise Exception("Allele contains char other than A/a, C/c, T/t, G/g, N/n")
+            raise ValueError("Allele contains char other than A/a, C/c, T/t, G/g, N/n")
 
         # check if contig is valid
         try:
             if not self.reference.fetch(self.chrom, self.pos - 1 , self.pos):
-                raise Exception("The locus is not defined in the reference")
+                raise ValueError("The locus is not defined in the reference")
         except:
-            raise Exception("The locus is not defined in the reference")
+            raise ValueError("The locus is not defined in the reference")
 
 
     @property
     def variant_type(self):
+        """returns "I" if insertion, "D" if deletion, "S" if signle-nucleotide substitution, 
+        and "M" if multi-nucleotide substitution. 
+        """ 
+        
         cdef int r_len, a_len
         cdef str var_type
             
@@ -109,35 +121,32 @@ cdef class Variant:
 
     @property
     def is_del(self):
-        r_len, a_len = len(self.ref), len(self.alt)
-        return r_len > a_len
+        """returns True if deletion
+        """
+        return self.variant_type == "D"
 
 
     @property
     def is_ins(self):
-        r_len, a_len = len(self.ref), len(self.alt)
-        return r_len < a_len
+        """returns True if insertion
+        """
+        return self.variant_type == "I"
 
         
     @property
     def is_indel(self):
-        """Ask if this is an indel
-
-        Args:
-            None
-        Returns:
-            bool: True if indel
+        """returns True if indel
         """
-        cdef str variant_type
-        variant_type = self.variant_type
-        return True if variant_type == "I" or variant_type == "D" else False
+        return self.is_ins or self.is_del
 
 
     @property
     def indel_seq(self):
-        if self.variant_type == "I":
+        """returns net inserted/deleted sequence. None if substitution.
+        """
+        if self.is_ins:
             return self.alt[len(self.ref) :]
-        elif self.variant_type == "D":
+        elif self.is_del:
             return self.ref[len(self.alt) :]
         else:
             return None
@@ -159,21 +168,27 @@ cdef class Variant:
 
 
     def __hash__(self):
-        
         cdef Variant i = self.normalize() if self.is_indel else self
         hashable = (i._chrom, i.pos, i.ref, i.alt)
 
         return hash(hashable)
 
 
+    def __dealloc__(self):
+        pass
+
     @property
     def is_leftaligned(self):
+        """returns True if left-aligned
+        """
         if self.ref[-1].upper() != self.alt[-1].upper():
             return True
 
     
     @property
     def is_normalized(self):
+        """returns True if left-aligned and parsimonious. 
+        """
         if self.is_leftaligned:
             if len(self.ref) > 1 and len(self.alt) and (self.ref[0].upper() == self.alt[0].upper()):
                 return False
@@ -184,15 +199,15 @@ cdef class Variant:
 
 
     def normalize(self, inplace=False):
-        """Nomalize to a left-aligned and minimal VCF representation
-           
-        A Python implementation of Tan et al. Bioinformatics, 2015, 2202-2204
+        """performes normalization on :class:`~indelpost.Variant` object.
         
-        Args:
-            inplace (bool): default to False
-        Returns:
-            Variant: normalized copy (default)
-            None: if inplace == True
+        Parameters
+        ----------
+
+        inplace : bool
+            returns None and normalizes this :class:`~indelpost.Variant` object if True. 
+            Otherwise, returns a normalized copy of this object. Default to False.
+
         """
         cdef Variant i
         
@@ -225,6 +240,9 @@ cdef class Variant:
     
     
     def generate_equivalents(self):
+        """generates non left-aligned copies of :class:`~indelpost.Variant` object.
+        """ 
+        
         i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference).normalize()
         pos, ref, alt = i.pos, i.ref, i.alt
         is_ins = i.is_ins
@@ -249,6 +267,24 @@ cdef class Variant:
 
     
     cpdef list query_vcf(self, VariantFile vcf, matchby="equivalence", window=50, as_dict=True):
+        """finds VCF records matching this :class:`~indelpost.Variant` object.
+
+        Parameters
+        ----------
+        vcf : pysam.VariantFile
+            VCF file to be queried. 
+            Supply as 
+            `pysam.VariantFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.VariantFile>`__ object.
+
+        matchby : string
+            "equivalence"
+            "locus"
+            "exact"
+            
+        window : integer
+            VCF records  
+
+        """
 
         cdef VariantRecord rec, hit
 
@@ -261,7 +297,7 @@ cdef class Variant:
         else:
             leftaligned_pos = self.normalize().pos
         
-        chrom = self.format_chrom_name(self.chrom, vcf=vcf)
+        chrom = self.__format_chrom_name(self.chrom, vcf=vcf)
         
         try:
             records = to_flat_list(

@@ -318,7 +318,7 @@ def is_compatible(query, subject, indel_type, partial_match=True):
     rt_check = contains_repeat_end(subject_indel, rt_query, subject_rt_flank)
     if rt_query and subject_rt_flank and not rt_check:
         return False
-
+    
     # check inserted/deleted sequences for similarity
     if query_indel and indel_type == "I":
         subject_len = len(subject_indel)
@@ -404,8 +404,8 @@ def is_almost_same(
     else:
         near_mismatches = mismatches[:len_lim]
         mid_mismatches = mismatches[len_lim : (10 * len_lim)]
-        far_mismatches = mismatches[(10 * len_lim) :]
+        far_mismatches = mismatches[(10 * len_lim) : (30 * len_lim)]
         mismatch_score = (
-            sum(near_mismatches) * 2 + sum(mid_mismatches) + sum(far_mismatches) * 0.5
+            sum(near_mismatches) * 2 + sum(mid_mismatches) + sum(far_mismatches) * 0.5 
         )
         return mismatch_score < mismatch_lim
