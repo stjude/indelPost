@@ -2,7 +2,8 @@
 
 import random
 import numpy as np
-from .contig import Contig
+#from .contig import Contig
+
 from .pileup import (
     make_pileup,
     update_pileup,
@@ -20,26 +21,42 @@ from .alleles_working import hard_phase_nearby_variants
 from .utilities import get_local_reference, split
 
 
+from indelpost.variant cimport Variant
+from indelpost.contig cimport Contig 
+
+from pysam.libcalignmentfile cimport AlignmentFile
+
+
 random.seed(123)
 
 
-class VariantAlignment(object):
-    def __init__(
+cdef class VariantAlignment:
+    cdef Variant target, __target
+    cdef AlignmentFile bam
+    cdef int window, retarget_window, mapqthresh
+    cdef int downsamplethresh, basequalthresh, match_score
+    cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
+    cdef float retarget_cutoff, __sample_factor
+    cdef bint exclude_duplicates, retarget, perform_retarget, is_bad_overhang
+    cdef list __pileup
+    cdef Contig __contig
+    
+    def __cinit__(
         self,
-        target,
-        bam,
-        window=50,
-        exclude_duplicates=True,
-        retarget=True,
-        retarget_window=30,
-        retarget_cutoff=0.6,
-        mapqthresh=20,
-        downsamplethresh=30000,
-        basequalthresh=20,
-        match_score=2,
-        mismatch_penalty=2,
-        gap_open_penalty=3,
-        gap_extension_penalty=1,
+        Variant target,
+        AlignmentFile bam,
+        int window=50,
+        bint exclude_duplicates=True, 
+        bint retarget=True,
+        int retarget_window=30,
+        float retarget_cutoff=0.6,
+        int mapqthresh=20,
+        int downsamplethresh=30000,
+        int basequalthresh=20,
+        int match_score=2,
+        int mismatch_penalty=2,
+        int gap_open_penalty=3,
+        int gap_extension_penalty=1,
     ):
         
         if not target.is_non_complex_indel():
@@ -108,7 +125,8 @@ class VariantAlignment(object):
             )
 
             self.is_bad_overhang = False
-            if contig.failed:
+            #if contig.failed:
+            if True:
 
                 within = min(self.retarget_window, len(self.__target.indel_seq) * 3)
 
@@ -189,7 +207,8 @@ class VariantAlignment(object):
                     return pileup, contig
 
         # soft-clip realn & SW realn
-        if contig.qc_passed:
+        #if contig.qc_passed:
+        if False: 
             pileup = find_by_softclip_split(self.__target, contig, pileup)
             pileup = find_by_smith_waterman_realn(
                 self.__target,

@@ -5,17 +5,21 @@ import numpy as np
 from collections import OrderedDict
 
 from .utilities import *
-from .variant import Variant
+
+from variant cimport Variant
+
 from .consensus import make_consensus
 
 
 random.seed(123)
 
 
-class Contig(object):
-    def __init__(self, target, pileup, donwsample_lim=100):
+cdef class Contig:
+    def __cinit__(self, Variant target, list pileup, int donwsample_lim=100):
         self.target = target
         self.pileup = pileup
+        #self.failed = False
+        #self.qc_passed = True
 
         self.targetpileup = self.__preprocess(donwsample_lim)
 
@@ -28,7 +32,7 @@ class Contig(object):
 
     def __preprocess(self, donwsample_lim):
         targetpileup = [read for read in self.pileup if read["is_target"]]
-        self.mapq = None
+        self.mapq = 0
 
         if not targetpileup:
             return targetpileup
@@ -62,15 +66,15 @@ class Contig(object):
         self.qc_passed = self.__qc()
 
     def __index_by_genome_coord(self, lt_index, rt_index):
-        self.lt_genomic_index = lt_index
-        self.rt_genomic_index = rt_index
+        self.lt_genomic_index = dict(lt_index) # cast june 18 2020
+        self.rt_genomic_index = dict(rt_index)
 
         tar = {self.target.pos: (self.target.ref, self.target.alt, 1.0)}
 
         genome_indexed_contig = rt_index
         genome_indexed_contig.update(lt_index)
         genome_indexed_contig.update(tar)
-        self.genome_indexed_contig = OrderedDict(sorted(genome_indexed_contig.items()))
+        self.genome_indexed_contig = dict(OrderedDict(sorted(genome_indexed_contig.items()))) # cast june 18 2020
 
     def __profile_non_target_variants(self):
         non_target_variants = [
