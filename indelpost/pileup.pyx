@@ -5,6 +5,7 @@ import random
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
 from .utilities import *
+from variant cimport Variant
 from .variant import Variant
 from .consensus import consensus_refseq
 from .equivalence import find_by_equivalence
@@ -22,7 +23,7 @@ cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 def make_pileup(
-    target, bam, exclude_duplicates, window, downsamplethresh, basequalthresh
+    Variant target, bam, exclude_duplicates, window, downsamplethresh, basequalthresh
 ):
 
     chrom, pos, reference = target.chrom, target.pos, target.reference

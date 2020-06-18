@@ -36,13 +36,13 @@ cdef class Variant:
         other than A/a, C/c, G/g, T/t, and N/n. 
         
     """
-    cdef public str chrom, ref, alt
-    cdef public int pos
-    cdef readonly str _chrom
-    cdef public FastaFile  reference
+    #cdef public str chrom, ref, alt
+    #cdef public int pos
+    #cdef readonly str _chrom
+    #cdef public FastaFile  reference
    
     #def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
-    def __cinit__(self, chrom, pos, ref, alt, reference):
+    def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
     #def __init__(self, chrom, pos, ref, alt, reference):
         self._chrom = str(chrom)
         self.pos = pos
@@ -266,7 +266,7 @@ cdef class Variant:
         return res
 
     
-    cpdef list query_vcf(self, VariantFile vcf, matchby="equivalence", window=50, as_dict=True):
+    def query_vcf(self, VariantFile vcf, matchby="equivalence", window=50, as_dict=True):
         """finds VCF records matching this :class:`~indelpost.Variant` object.
 
         Parameters
@@ -286,7 +286,7 @@ cdef class Variant:
 
         """
 
-        cdef VariantRecord rec, hit
+        #cdef VariantRecord rec, hit
 
         matchbys = ["equivalence", "locus", "exact"]
         if not matchby in matchbys:
