@@ -6,7 +6,7 @@ from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
 from .utilities import *
 from variant cimport Variant
-from .variant import Variant
+#from .variant import Variant
 from .consensus import consensus_refseq
 from .equivalence import find_by_equivalence
 from .localn import (
@@ -17,15 +17,24 @@ from .localn import (
     is_worth_realn,
 )
 
+from pysam.libcfaidx cimport FastaFile
+from pysam.libcalignedsegment cimport AlignedSegment
+from pysam.libcalignmentfile cimport AlignmentFile
+
 random.seed(123)
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 def make_pileup(
-    Variant target, bam, exclude_duplicates, window, downsamplethresh, basequalthresh
+    Variant target, AlignmentFile bam, bint exclude_duplicates, int window, int downsamplethresh, int basequalthresh
 ):
-
+    cdef str chrom
+    cdef int pos
+    cdef FastaFile reference
+    cdef AlignedSegment seg
+    cdef dict read
+    
     chrom, pos, reference = target.chrom, target.pos, target.reference
 
     ref_len = reference.get_reference_length(chrom)
@@ -41,7 +50,7 @@ def make_pileup(
         sample_factor = 1.0
 
     pileup = [
-        dictize_read(read, chrom, pos, reference, basequalthresh) for read in pileup
+        dictize_read(seg, chrom, pos, reference, basequalthresh) for seg in pileup
     ]
     #pileup = map(partial(dictize_read, chrom=chrom, pos=pos, reference=reference, basequalthresh=basequalthresh), pileup)
     

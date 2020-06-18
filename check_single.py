@@ -32,7 +32,6 @@ start = time.time()
 var = ip.Variant(chrom, pos, ref, alt, reference)
 
 a = var.query_vcf(vcf, matchby="locus")
-print(a)
 
 aln = ip.VariantAlignment(var, bam, exclude_duplicates=False)
 b = aln.count_alleles()
