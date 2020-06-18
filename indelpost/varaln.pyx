@@ -221,7 +221,7 @@ cdef class VariantAlignment:
         return pileup, contig
 
     def count_alleles(
-        self, fwrv=False, by_fragment=False, qualitywindow=None, qualitythresh=None
+        self, bint fwrv=False, bint by_fragment=False, int qualitywindow=0, int qualitythresh=0
     ):
         """Unique-count reads with and without target indel
 
@@ -232,6 +232,8 @@ cdef class VariantAlignment:
         allele counts (tuple): (ref_count, alt_count)
         """
 
+        cdef dict read
+        
         pos, indel_len = self.target.pos, len(self.target.indel_seq)
         margin = min(indel_len / 2, 5) if indel_len > 3 else indel_len
 
@@ -343,7 +345,7 @@ def is_quality_read(read, pos, qualitywindow, qualitythresh):
         return lt_median > qualitythresh and rt_median > qualitythresh
 
 
-def count_as_non_target(read, pos, margin):
+cdef bint count_as_non_target(dict read, int pos, int margin):
     if read["is_target"] or not read["is_covering"]:
         return False
     else:
@@ -354,14 +356,18 @@ def count_as_non_target(read, pos, margin):
             return True
 
 
-def preprocess_for_contig_construction(
-    target,
-    pileup,
-    match_score,
-    mismatch_penalty,
-    gap_open_penalty,
-    gap_extension_penalty,
+cdef list preprocess_for_contig_construction(
+    Variant target,
+    list pileup,
+    int match_score,
+    int mismatch_penalty,
+    int gap_open_penalty,
+    int gap_extension_penalty,
 ):
+    
+    cdef dict read
+    cdef int clips, nonclips
+
     if not pileup:
         return pileup
 

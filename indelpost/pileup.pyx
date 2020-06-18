@@ -96,7 +96,7 @@ def fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates):
     return reads
 
 
-def dictize_read(read, chrom, pos, reference, basequalthresh):
+cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile reference, int basequalthresh):
     cigar_string = read.cigarstring
     cigar_list = cigar_ptrn.findall(cigar_string)
 
@@ -254,7 +254,7 @@ def leftalign_indel_read(
         )
 
 
-def leftalign_cigar(cigarstring, target, read_start):
+cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
     target.normalize(inplace=True)
 
     pos = target.pos
