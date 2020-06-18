@@ -125,8 +125,7 @@ cdef class VariantAlignment:
             )
 
             self.is_bad_overhang = False
-            #if contig.failed:
-            if True:
+            if contig.failed:
 
                 within = min(self.retarget_window, len(self.__target.indel_seq) * 3)
 
@@ -207,8 +206,7 @@ cdef class VariantAlignment:
                     return pileup, contig
 
         # soft-clip realn & SW realn
-        #if contig.qc_passed:
-        if False: 
+        if contig.qc_passed:
             pileup = find_by_softclip_split(self.__target, contig, pileup)
             pileup = find_by_smith_waterman_realn(
                 self.__target,
