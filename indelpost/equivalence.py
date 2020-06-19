@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from .variant import Variant
 from .utilities import split_cigar, get_local_reference
 from .localn import make_aligner, align, findall_indels

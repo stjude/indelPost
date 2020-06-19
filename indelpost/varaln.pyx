@@ -1,4 +1,4 @@
-#cython: profile=False
+#cython: profile=True
 
 import random
 import numpy as np
@@ -22,7 +22,7 @@ from .utilities import get_local_reference
 
 from indelpost.utilities cimport split
 
-from indelpost.variant cimport Variant
+from variant cimport Variant
 from indelpost.contig cimport Contig 
 
 from pysam.libcalignmentfile cimport AlignmentFile
@@ -81,7 +81,7 @@ cdef class VariantAlignment:
 
         self.__pileup, self.__contig = self.__parse_pileup()
 
-    def __parse_pileup(self, contig=None, retargeted=False):
+    cdef __parse_pileup(self, Contig contig=None, bint retargeted=False):
         """Dictize reads for target indel and make target indel template by consensus
 
         bam (pysam.AlignmentFile)

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 from indelpost.utilities cimport split
+from indelpost.contig cimport Contig
+from indelpost.variant cimport Variant
 from .utilities import get_end_pos
 from .consensus import is_compatible
 
 
-def find_by_softclip_split(target, contig, pileup):
+cpdef list find_by_softclip_split(Variant target, Contig contig, list pileup):
     """Annotate if reads contain target indel
 
     Args:
@@ -28,7 +30,7 @@ def find_by_softclip_split(target, contig, pileup):
     return pileup
 
 
-def find_candidate_softclips(read, pos, indel_type, indel_seq):
+cdef dict find_candidate_softclips(dict read, int pos, str indel_type, str indel_seq):
     """Find and annotate softclipped indels to be realigned
 
     Args:
@@ -70,7 +72,7 @@ def find_candidate_softclips(read, pos, indel_type, indel_seq):
     return read
 
 
-def classify_softclip_patterns(read, pos):
+cdef str classify_softclip_patterns(dict read, int pos):
     """Annotate if softclip starts before or after indel postion
 
     Args:
@@ -100,7 +102,7 @@ def classify_softclip_patterns(read, pos):
         return "other"
 
 
-def is_target_by_sftclp_split(read, pos, indel_type, indel_seq, contig, slided=False):
+cdef dict is_target_by_sftclp_split(dict read, int pos, str indel_type, str indel_seq, Contig contig, bint slided=False):
     """Find softclipped target indels
     
     Args:
@@ -141,7 +143,7 @@ def is_target_by_sftclp_split(read, pos, indel_type, indel_seq, contig, slided=F
     return read
 
 
-def split_softclipped_read(read, pos, indel_type, indel_len):
+cdef dict split_softclipped_read(dict read, int pos, str indel_type, int indel_len):
     cigar_string = read["cigar_string"]
     reverse = True if read["softclip_pattern"] == "leading" else False
     string_pos = read["read_end"] if reverse else read["read_start"]

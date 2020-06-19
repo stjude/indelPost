@@ -6,8 +6,8 @@ import random
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
 
-from indelpost.utilities cimport split
-from .utilities import to_flat_list, get_mapped_subreads, get_spliced_subreads, locate_indels, split_cigar, get_local_reference, most_common
+from indelpost.utilities cimport split, locate_indels
+from .utilities import to_flat_list, get_mapped_subreads, get_spliced_subreads, most_common, split_cigar, get_local_reference
 #from .utilities import *
 from variant cimport Variant
 #from .variant import Variant
@@ -75,7 +75,10 @@ def is_within_intron(read, pos, window):
             return False
 
 
-def fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates):
+cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int window, bint exclude_duplicates):
+    
+    cdef AlignedSegment read
+    
     pos = pos - 1  # convert to 0-based
     all_reads = bam.fetch(
         chrom, max(0, pos - window), min(pos + 1 + window, ref_len), until_eof=True
@@ -99,8 +102,10 @@ def fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates):
 
     return reads
 
-@cython.profile(True)
 cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile reference, int basequalthresh):
+    
+    cdef tuple ins, deln
+    
     cigar_string = read.cigarstring
     cigar_list = cigar_ptrn.findall(cigar_string)
 
@@ -205,18 +210,18 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile refere
     return read_dict
 
 
-def leftalign_indel_read(
-    chrom,
-    pos,
-    indel_len,
-    indel_type,
-    cigar_string,
-    read_start,
-    aln_start,
-    read_seq,
-    ref_seq,
-    read_qual,
-    reference,
+cdef tuple leftalign_indel_read(
+    str chrom,
+    int pos,
+    int indel_len,
+    str indel_type,
+    str cigar_string,
+    int read_start,
+    int aln_start,
+    str read_seq,
+    str ref_seq,
+    object read_qual,
+    FastaFile reference,
 ):
     lt_flank, rt_flank = split(
         read_seq, cigar_string, pos, read_start, is_for_ref=False, reverse=False
@@ -279,7 +284,7 @@ cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
     return "".join(lt_cigar_lst) + new_cigar
 
 
-def parse_spliced_read(cigar_string, read_start, read_end, pos):
+cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, int pos):
     spliced_subreads = get_spliced_subreads(cigar_string, read_start, read_end)
 
     is_covering = False

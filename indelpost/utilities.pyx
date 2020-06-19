@@ -4,7 +4,9 @@ import re
 import numpy as np
 from collections import namedtuple
 from pysam.libcbcf cimport VariantRecord, VariantFile
-cimport cython
+
+from variant cimport Variant
+
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
@@ -205,7 +207,7 @@ cpdef int get_end_pos(int read_start_pos, str lt_flank, str cigarstring):
     return read_start_pos + flank_len
 
 
-cpdef tuple locate_indels(str cigarstring, int aln_start_pos):
+cdef tuple locate_indels(str cigarstring, int aln_start_pos):
     aln_start_pos -= 1 
 
     cdef list cigar_lst = cigar_ptrn.findall(cigarstring)
@@ -328,83 +330,11 @@ cdef tuple split(object data, str cigarstring, int target_pos, int string_pos, b
     return lt, rt
 
 
+cpdef tuple get_local_reference(Variant target, list pileup):
 
-cpdef tuple qsplit(list data, str cigarstring, int target_pos, int string_pos, bint is_for_ref, bint reverse):
-    
-    cdef list cigar_lst = cigar_ptrn.findall(cigarstring)
-    cdef int _size = len(cigar_lst)
-
-    cdef str cigar, event
-    cdef int event_len, d_move, g_move
-    
-    cdef double [:] data_moves = np.zeros((_size,))
-    cdef double [:] genome_moves = np.zeros((_size,))
-    
-    cdef int i = 0, j = 0  
-    
-    
-    
-    for cigar in cigar_lst:
-        event, event_len = cigar[-1], int(cigar[:-1])
-        
-        if event == "N":
-            d_move = 0
-            g_move = event_len
-        elif event == "I":
-            g_move = 0
-            d_move = 0 if is_for_ref else event_len
-        elif event == "D":
-            g_move = event_len
-            d_move = event_len if is_for_ref else 0
-        else:
-            g_move, d_move = event_len, event_len
-        
-        data_moves[i] = d_move
-        genome_moves[i] = g_move
-        i += 1
-
-    if reverse:
-        string_pos += 1
-        data = data[::-1]
-        data_moves = data_moves[::-1]
-        genome_moves = genome_moves[::-1]
-    else:
-        string_pos -= 1
-
-    for d_move, g_move in zip(data_moves, genome_moves):
-        if reverse:
-            if target_pos < string_pos:
-                string_pos -= g_move
-            else:
-                break
-        else:
-            if string_pos < target_pos:
-                string_pos += g_move
-            else:
-                break
-        j += d_move
-     
-    diff = string_pos - (target_pos + 1)if reverse else target_pos - string_pos
-    if reverse:
-        lt = data[j + diff :]
-        lt = lt[::-1]
-        rt = data[: j + diff]
-        rt = rt[::-1]
-    else:
-        lt = data[: j + diff]
-        rt = data[j + diff :]
-     
-    return lt, rt
-
-
-
-
-
-
-
-
-
-def get_local_reference(target, pileup):
+    cdef str span
+    cdef tuple ptrn 
+    cdef int i, x
 
     chrom, pos, reference = target.chrom, target.pos, target.reference
     splice_patterns = [read["splice_pattern"] for read in pileup if read["splice_pattern"] != ("", "")]
