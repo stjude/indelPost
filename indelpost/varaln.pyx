@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#cython: profile=False
 
 import random
 import numpy as np
@@ -18,8 +18,9 @@ from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
 from .alleles import suggest_from_alignment
 from .alleles_working import hard_phase_nearby_variants
-from .utilities import get_local_reference, split
+from .utilities import get_local_reference
 
+from indelpost.utilities cimport split
 
 from indelpost.variant cimport Variant
 from indelpost.contig cimport Contig 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-#from .utilities import split
-from .utilities import *
+from indelpost.utilities cimport split
+from .utilities import get_end_pos
 from .consensus import is_compatible
 
 

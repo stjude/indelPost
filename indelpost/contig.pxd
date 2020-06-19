@@ -5,7 +5,7 @@ cdef class Contig:
     cdef list pileup, targetpileup
     cdef public bint qc_passed, failed
     cdef int donwsample_lim, mapq
-    cdef dict lt_genomic_index, rt_genomic_index, genome_indexed_contig
+    cdef object lt_genomic_index, rt_genomic_index, genome_indexed_contig
     cdef int start, end
     cdef str lt_reference_seq, rt_reference_seq
     cdef public str lt_consensus_seq, rt_consensus_seq

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#cython: profile=True
 
 import random
 import numpy as np
@@ -66,15 +66,15 @@ cdef class Contig:
         self.qc_passed = self.__qc()
 
     def __index_by_genome_coord(self, lt_index, rt_index):
-        self.lt_genomic_index = dict(lt_index) # cast june 18 2020
-        self.rt_genomic_index = dict(rt_index)
+        self.lt_genomic_index = lt_index
+        self.rt_genomic_index = rt_index
 
         tar = {self.target.pos: (self.target.ref, self.target.alt, 1.0)}
 
         genome_indexed_contig = rt_index
         genome_indexed_contig.update(lt_index)
         genome_indexed_contig.update(tar)
-        self.genome_indexed_contig = dict(OrderedDict(sorted(genome_indexed_contig.items()))) # cast june 18 2020
+        self.genome_indexed_contig = OrderedDict(sorted(genome_indexed_contig.items()))
 
     def __profile_non_target_variants(self):
         non_target_variants = [

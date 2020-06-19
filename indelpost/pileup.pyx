@@ -1,10 +1,14 @@
-#!/usr/bin/env python3
+#cython:profile=False
 
+cimport cython
 import re
 import random
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
-from .utilities import *
+
+from indelpost.utilities cimport split
+from .utilities import to_flat_list, get_mapped_subreads, get_spliced_subreads, locate_indels, split_cigar, get_local_reference, most_common
+#from .utilities import *
 from variant cimport Variant
 #from .variant import Variant
 from .consensus import consensus_refseq
@@ -95,7 +99,7 @@ def fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates):
 
     return reads
 
-
+@cython.profile(True)
 cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile reference, int basequalthresh):
     cigar_string = read.cigarstring
     cigar_list = cigar_ptrn.findall(cigar_string)
@@ -595,7 +599,7 @@ def retarget(
                         candidate,
                         is_gapped_aln,
                         gap_open_penalty,
-                        gap_extentsion_penalty,
+                        gap_extension_penalty,
                         aligner,
                         ref_seq,
                         ref_start,

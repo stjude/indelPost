@@ -2,7 +2,7 @@
 import time
 import pysam
 import indelpost as ip
-
+import cProfile
 
 fasta = "/research/rgs01/resgen/prod/tartan/runs/ad_hoc/reference_import-Tm4OgjZi/output/reference/Homo_sapiens/GRCh37-lite/FASTA/GRCh37-lite.fa"
 #fasta = "/rgs01/resgen/prod/tartan/index/reference/Homo_sapiens/GRCh38_no_alt/FASTA/GRCh38_no_alt.fa"
@@ -33,7 +33,7 @@ var = ip.Variant(chrom, pos, ref, alt, reference)
 
 a = var.query_vcf(vcf, matchby="locus")
 
-
+#cProfile.run("ip.VariantAlignment(var, bam, exclude_duplicates=False)", sort="time")
 
 aln = ip.VariantAlignment(var, bam, exclude_duplicates=False)
 b = aln.count_alleles()

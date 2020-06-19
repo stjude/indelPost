@@ -1,4 +1,5 @@
 # cython: embedsignature=True
+# cython: profile=False
 
 from .utilities import *
 from pysam.libcfaidx cimport FastaFile

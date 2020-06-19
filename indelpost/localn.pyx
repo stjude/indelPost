@@ -4,7 +4,8 @@ import re
 from ssw import SSW
 
 from .consensus import is_compatible
-from .utilities import *
+from .utilities import get_mapped_subreads, get_end_pos
+from indelpost.utilities cimport split
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
