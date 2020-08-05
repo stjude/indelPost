@@ -1,11 +1,15 @@
-#!/usr/bin/env python3
+#cython:profile=False
 
+cimport cython
 import re
 import random
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
-from .utilities import *
-from .variant import Variant
+
+from indelpost.utilities cimport split, locate_indels, get_spliced_subreads
+from .utilities import to_flat_list, get_mapped_subreads, most_common, split_cigar, get_local_reference
+from indelpost.variant cimport Variant
+
 from .consensus import consensus_refseq
 from .equivalence import find_by_equivalence
 from .localn import (
@@ -16,21 +20,30 @@ from .localn import (
     is_worth_realn,
 )
 
+from pysam.libcfaidx cimport FastaFile
+from pysam.libcalignedsegment cimport AlignedSegment
+from pysam.libcalignmentfile cimport AlignmentFile
+
 random.seed(123)
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
-def make_pileup(
-    target, bam, exclude_duplicates, window, downsamplethresh, basequalthresh
+cdef tuple make_pileup(
+    Variant target, AlignmentFile bam, bint exclude_duplicates, int window, int downsamplethresh, int basequalthresh,
 ):
-
+    cdef str chrom
+    cdef int pos
+    cdef FastaFile reference
+    cdef AlignedSegment seg
+    cdef dict read
+    
     chrom, pos, reference = target.chrom, target.pos, target.reference
 
     ref_len = reference.get_reference_length(chrom)
-
+    
     pileup = fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates)
-
+    
     # downsampling
     orig_depth = len(pileup)
     if orig_depth > downsamplethresh:
@@ -40,9 +53,8 @@ def make_pileup(
         sample_factor = 1.0
 
     pileup = [
-        dictize_read(read, chrom, pos, reference, basequalthresh) for read in pileup
+        dictize_read(seg, chrom, pos, reference, basequalthresh) for seg in pileup
     ]
-    #pileup = map(partial(dictize_read, chrom=chrom, pos=pos, reference=reference, basequalthresh=basequalthresh), pileup)
     
     pileup = [read for read in pileup if not is_within_intron(read, pos, window)]
 
@@ -61,7 +73,10 @@ def is_within_intron(read, pos, window):
             return False
 
 
-def fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates):
+cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int window, bint exclude_duplicates):
+    
+    cdef AlignedSegment read
+    
     pos = pos - 1  # convert to 0-based
     all_reads = bam.fetch(
         chrom, max(0, pos - window), min(pos + 1 + window, ref_len), until_eof=True
@@ -74,8 +89,9 @@ def fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates):
             if not read.is_duplicate
             and not read.is_secondary
             and read.cigarstring
-            and read.has_tag("MD")
         ]
+        #    and read.has_tag("MD")
+        #]
     else:
         reads = [
             read
@@ -86,7 +102,11 @@ def fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates):
     return reads
 
 
-def dictize_read(read, chrom, pos, reference, basequalthresh):
+
+cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile reference, int basequalthresh):
+    
+    cdef tuple ins, deln
+    
     cigar_string = read.cigarstring
     cigar_list = cigar_ptrn.findall(cigar_string)
 
@@ -101,7 +121,9 @@ def dictize_read(read, chrom, pos, reference, basequalthresh):
 
     read_seq = read.query_sequence
     read_qual = read.query_qualities
-    ref_seq = read.get_reference_sequence()
+    #ref_seq = read.get_reference_sequence()
+    ref_seq = reference.fetch(chrom, aln_start - 1, aln_end)
+    #ref_seq = reference.fetch(chrom, aln_start - 100, aln_end + 100)
 
     read_dict = {
         "read": read,
@@ -125,8 +147,8 @@ def dictize_read(read, chrom, pos, reference, basequalthresh):
     }
 
     # base qual check
-    low_quals = sum([1 if q <= basequalthresh else 0 for q in read_qual])
-    read_dict["is_dirty"] = low_quals / len(read_seq) > 0.15
+    read_dict["low_qual_base_num"] = sum(q <= basequalthresh for q in read_qual)
+    read_dict["is_dirty"] = read_dict["low_qual_base_num"] / len(read_seq) > 0.15
 
     insertions, deletions = locate_indels(cigar_string, read_start)
 
@@ -191,18 +213,18 @@ def dictize_read(read, chrom, pos, reference, basequalthresh):
     return read_dict
 
 
-def leftalign_indel_read(
-    chrom,
-    pos,
-    indel_len,
-    indel_type,
-    cigar_string,
-    read_start,
-    aln_start,
-    read_seq,
-    ref_seq,
-    read_qual,
-    reference,
+cdef tuple leftalign_indel_read(
+    str chrom,
+    int pos,
+    int indel_len,
+    str indel_type,
+    str cigar_string,
+    int read_start,
+    int aln_start,
+    str read_seq,
+    str ref_seq,
+    object read_qual,
+    FastaFile reference,
 ):
     lt_flank, rt_flank = split(
         read_seq, cigar_string, pos, read_start, is_for_ref=False, reverse=False
@@ -244,7 +266,7 @@ def leftalign_indel_read(
         )
 
 
-def leftalign_cigar(cigarstring, target, read_start):
+cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
     target.normalize(inplace=True)
 
     pos = target.pos
@@ -265,7 +287,7 @@ def leftalign_cigar(cigarstring, target, read_start):
     return "".join(lt_cigar_lst) + new_cigar
 
 
-def parse_spliced_read(cigar_string, read_start, read_end, pos):
+cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, int pos):
     spliced_subreads = get_spliced_subreads(cigar_string, read_start, read_end)
 
     is_covering = False
@@ -585,7 +607,7 @@ def retarget(
                         candidate,
                         is_gapped_aln,
                         gap_open_penalty,
-                        gap_extentsion_penalty,
+                        gap_extension_penalty,
                         aligner,
                         ref_seq,
                         ref_start,
@@ -691,10 +713,18 @@ def update_read_info(
         indels = findall_indels(
             aln, genome_aln_pos, ref_seq, read["read_seq"], basequals=read["read_qual"]
         )
-
+        
         indels = [indel for indel in indels if abs(candidate.pos - indel["pos"]) == 0]
+        
         if indels:
             indel = indels[0]
+            if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
+                pass
+            elif candidate.is_del and indel["del_seq"] == candidate.indel_seq:
+                pass
+            else:
+                read["cigar_updated"] = False
+                return read
         else:
             read["cigar_updated"] = False
             return read
@@ -842,9 +872,9 @@ def numeric_span(spl_span):
 
 def update_read_positions(read, target_pos):
 
-    left_adjust = sum([-int(c[:-1]) if c[-1] != "I" else -1 for c in read["lt_cigar"]])
-    right_adjust = sum([int(c[:-1]) if c[-1] != "I" else 1 for c in read["rt_cigar"]])
-
+    left_adjust = sum([-int(c[:-1]) if c[-1] != "I" else 0 for c in read["lt_cigar"]])
+    right_adjust = sum([int(c[:-1]) if c[-1] != "I" else 0 for c in read["rt_cigar"]])
+    
     read["read_start"] = target_pos + left_adjust + 1
     read["read_end"] = target_pos + right_adjust
 
@@ -861,11 +891,11 @@ def update_read_positions(read, target_pos):
 def update_pileup(
     pileup,
     new_target,
-    new_reads,
     match_score,
     mismatch_penalty,
     gap_open_penalty,
     gap_extension_penalty,
+    bypass_search=False
 ):
 
     for read in pileup:
@@ -885,11 +915,14 @@ def update_pileup(
         read["splice_pattern"] = splice_ptrn
         read["intron_pattern"] = intron_ptrn
 
-    return find_by_equivalence(
-        new_target,
-        pileup,
-        match_score,
-        mismatch_penalty,
-        gap_open_penalty,
-        gap_extension_penalty,
-    )
+    if bypass_search:
+        return new_target, pileup
+    else:
+        return find_by_equivalence(
+            new_target,
+            pileup,
+            match_score,
+            mismatch_penalty,
+            gap_open_penalty,
+            gap_extension_penalty,
+        )

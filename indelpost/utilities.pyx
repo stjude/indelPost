@@ -1,9 +1,13 @@
-#!/usr/bin/env python3
+#cython: profile=True
 
 import re
 import numpy as np
 from collections import namedtuple
-from pysam.libcbcf cimport VariantRecord, VariantFile
+from operator import mul
+from functools import reduce
+from pysam.libcbcf cimport VariantRecord, VariantRecordFilter, VariantFile
+
+from indelpost.variant cimport Variant
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
@@ -47,11 +51,11 @@ cpdef list to_flat_vcf_records(VariantRecord record):
     return flat_record
 
 
-cpdef dict to_dict(pysam_vcf_rec):
+cpdef dict to_dict(object record):
     cdef str k
     
     d = {} 
-    for k, v in pysam_vcf_rec.items():
+    for k, v in record.items():
         if isinstance(v, tuple):
             d[k] = ",".join([str(i) for i in v])
         else:
@@ -61,7 +65,7 @@ cpdef dict to_dict(pysam_vcf_rec):
         return d
 
 
-def match_indels(query, subject, matchby):
+cpdef bint match_indels(Variant query, Variant subject, str matchby):
     if matchby != "equivalence" and not query.is_indel:
         return False
 
@@ -85,6 +89,32 @@ def match_indels(query, subject, matchby):
             and (query.alt == subject.alt)
         )
         
+
+cpdef double linguistic_complexity(str seq):
+    cdef int i, j, n
+    n = len(seq)
+    if n <= 1:
+        return float(n)
+    else:
+        usage = []
+        for i in range(1, n):
+            i_mer = [seq[j : j + i] for j in range(n - i + 1)]  
+            usage.append(len(set(i_mer)) / min(4 ** i, n - i + 1))
+        
+        return reduce(mul, usage)
+
+
+cpdef double low_qual_fraction(list pileup):
+    cdef dict read
+    cdef int pileup_vol = 1
+    cdef int low_qual_vol = 0
+
+    for read in pileup:
+        pileup_vol += len(read["read_seq"])
+        low_qual_vol += read["low_qual_base_num"]
+    
+    return low_qual_vol / pileup_vol
+
 
 def to_minimal_repeat_unit(seq):
     """Find repeat unit in indel sequence
@@ -144,7 +174,7 @@ cpdef list get_mapped_subreads(str cigarstring, int aln_start_pos, int aln_end_p
     return res
 
 
-cpdef list get_spliced_subreads(str cigarstring, int read_start_pos, int read_end_pos):
+cdef list get_spliced_subreads(str cigarstring, int read_start_pos, int read_end_pos):
     
     cdef int i = 0
     cdef int event_len
@@ -204,7 +234,7 @@ cpdef int get_end_pos(int read_start_pos, str lt_flank, str cigarstring):
     return read_start_pos + flank_len
 
 
-cpdef tuple locate_indels(str cigarstring, int aln_start_pos):
+cdef tuple locate_indels(str cigarstring, int aln_start_pos):
     aln_start_pos -= 1 
 
     cdef list cigar_lst = cigar_ptrn.findall(cigarstring)
@@ -255,7 +285,11 @@ cpdef tuple split_cigar(str cigarstring, int target_pos, int start):
             lt_lst.append(cigar)
 
 
-cpdef tuple split(data, str cigarstring, int target_pos, int string_pos, bint is_for_ref, bint reverse):
+#ctypedef fused str_or_list:
+#    str
+#    list 
+
+cdef tuple split(object data, str cigarstring, int target_pos, int string_pos, bint is_for_ref, bint reverse):
     
     cdef list cigar_lst = cigar_ptrn.findall(cigarstring)
     cdef int _size = len(cigar_lst)
@@ -266,7 +300,10 @@ cpdef tuple split(data, str cigarstring, int target_pos, int string_pos, bint is
     cdef double [:] data_moves = np.zeros((_size,))
     cdef double [:] genome_moves = np.zeros((_size,))
     
-    cdef int i = 0
+    cdef int i = 0, j = 0  
+    
+    
+    
     for cigar in cigar_lst:
         event, event_len = cigar[-1], int(cigar[:-1])
         
@@ -294,7 +331,6 @@ cpdef tuple split(data, str cigarstring, int target_pos, int string_pos, bint is
     else:
         string_pos -= 1
 
-    cdef int j = 0
     for d_move, g_move in zip(data_moves, genome_moves):
         if reverse:
             if target_pos < string_pos:
@@ -321,7 +357,10 @@ cpdef tuple split(data, str cigarstring, int target_pos, int string_pos, bint is
     return lt, rt
 
 
-def get_local_reference(target, pileup):
+cpdef tuple get_local_reference(Variant target, list pileup):
+
+    cdef str span
+    cdef tuple ptrn 
 
     chrom, pos, reference = target.chrom, target.pos, target.reference
     splice_patterns = [read["splice_pattern"] for read in pileup if read["splice_pattern"] != ("", "")]

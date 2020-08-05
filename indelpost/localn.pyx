@@ -4,7 +4,8 @@ import re
 from ssw import SSW
 
 from .consensus import is_compatible
-from .utilities import *
+from .utilities import get_mapped_subreads, get_end_pos
+from indelpost.utilities cimport split
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
@@ -144,7 +145,9 @@ def is_worth_realn(read, qual_lim=23):
         if covering_start <= var[0] <= covering_end and var[3] > qual_lim
     ]
 
-    if len(mismatches) > 2:
+    indels = [var for var in read["I"] + read["D"] if covering_start <= var[0] <= covering_end]
+
+    if len(mismatches) > 2 or indels:
         return True
     else:
         return False
@@ -163,7 +166,12 @@ def is_target_by_ssw(read, contig, mut_aligner, ref_aligner, gap_open_penalty, g
     read_seq = read["read_seq"]
     mut_aln = align(mut_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
-
+    
+    #if len(cigar_ptrn.findall(mut_aln.CIGAR)) == 1 and int(mut_aln.CIGAR[:-1]) * 2 == mut_aln.optimal_score:
+    #    print(read["read_name"])
+    #    read["is_target"] = True
+    #    return read
+     
     if not indel_type in ref_aln.CIGAR:
         return read
     

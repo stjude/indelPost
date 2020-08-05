@@ -1,11 +1,11 @@
 # cython: embedsignature=True
+# cython: profile=True
 
 from .utilities import *
 from pysam.libcfaidx cimport FastaFile
-from pysam.libcbcf cimport VariantRecord, VariantFile
+#from pysam.libcbcf cimport VariantRecord, VariantFile
+from pysam.libcbcf cimport VariantFile
 
-
-#cdef class Variant:
 cdef class Variant:
     """This class accepts a VCF-style variant representation as input. 
     Equality holds between :class:`~indelpost.Variant` objects 
@@ -36,14 +36,7 @@ cdef class Variant:
         other than A/a, C/c, G/g, T/t, and N/n. 
         
     """
-    cdef public str chrom, ref, alt
-    cdef public int pos
-    cdef readonly str _chrom
-    cdef public FastaFile  reference
-   
-    #def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
-    def __cinit__(self, chrom, pos, ref, alt, reference):
-    #def __init__(self, chrom, pos, ref, alt, reference):
+    def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
         self._chrom = str(chrom)
         self.pos = pos
         self.ref = ref
@@ -266,7 +259,7 @@ cdef class Variant:
         return res
 
     
-    cpdef list query_vcf(self, VariantFile vcf, matchby="equivalence", window=50, as_dict=True):
+    def query_vcf(self, VariantFile vcf, matchby="equivalence", window=50, as_dict=True):
         """finds VCF records matching this :class:`~indelpost.Variant` object.
 
         Parameters
@@ -285,9 +278,6 @@ cdef class Variant:
             VCF records  
 
         """
-
-        cdef VariantRecord rec, hit
-
         matchbys = ["equivalence", "locus", "exact"]
         if not matchby in matchbys:
             raise ValueError("match by one of: %s" % matchbys)

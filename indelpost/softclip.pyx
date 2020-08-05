@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
-#from .utilities import split
-from .utilities import *
+from indelpost.utilities cimport split
+from indelpost.contig cimport Contig
+from indelpost.variant cimport Variant
+from .utilities import get_end_pos
 from .consensus import is_compatible
 
 
@@ -15,6 +17,7 @@ def find_by_softclip_split(target, contig, pileup):
     Return:
         pileup (list): annotated pileup
     """
+    
     pos, indel_type, indel_seq = (target.pos, target.variant_type, target.indel_seq)
 
     pileup = [
@@ -85,11 +88,12 @@ def classify_softclip_patterns(read, pos):
     for i, c in enumerate(read["cigar_list"]):
         event, event_len = c[-1], int(c[:-1])
         event_pos += event_len
+        
         if pos <= event_pos:
             last_event = event
             is_leading = i == 0
             break
-
+    
     if last_event == "M":
         return "off_clipping"
     elif last_event == "S" and is_leading:
@@ -165,8 +169,7 @@ def split_softclipped_read(read, pos, indel_type, indel_len):
     )
 
     if indel_type == "I":
-        rt_flank = rt_flank[indel_len:]
-        mid_seq = rt_flank[:indel_len]
+        mid_seq, rt_flank = rt_flank[:indel_len], rt_flank[indel_len:]
         read["del_seq"] = ""
     else:
         del_pos = get_end_pos(read["read_start"], lt_flank, cigar_string)

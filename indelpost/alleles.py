@@ -14,56 +14,99 @@ from .utilities import *
 from .localn import findall_mismatches
 from .variant import Variant
 
-
-#def hard_phase_nearby_variants(target, contig, snv_nearby, indel_nearby, mapq_thresh, dbsnp)
-def suggest_from_alignment(
-    target, contig, pileup, dbsnp=None, mapq_lim=20, max_common_str_len=7
+# @profile
+def hard_phase_nearby_variants(
+    target,
+    contig,
+    pileup,
+    mapq_thresh,
+    low_qual_frac_thresh,
+    snv_neighborhood,
+    indel_neighborhood,
+    indel_repeat_thresh,
+    sequence_complexity_thresh,
+    dbsnp,
 ):
 
-    if contig.failed or contig.mapq < mapq_lim:
-        return None
-     
-    pileup_mapq = np.percentile([read["mapq"] for read in pileup], 15)
-    if pileup_mapq < mapq_lim:
+    if contig.failed or not contig.qc_passed or contig.mapq < mapq_thresh:
         return None
 
-    variants_list = contig.mismatches + contig.non_target_indels
-
-    if not variants_list:
+    if (
+        seq_complexity(contig, snv_neighborhood, indel_neighborhood)
+        < sequence_complexity_thresh
+    ):
         return None
 
-    indexed_contig = contig.genome_indexed_contig
+    if low_qual_fraction(pileup) > low_qual_frac_thresh:
+        return None
+
+    pileup_mapq = np.percentile([read["mapq"] for read in pileup], 50)
+    if pileup_mapq < mapq_thresh:
+        return None
+
+    variants_to_phase = contig.mismatches + contig.non_target_indels
     
-    indexed_contig, variants_list = precleaning(
-        indexed_contig, variants_list, target.pos
+    if not variants_to_phase:
+        return None
+
+    indexed_contig = contig.contig_dict
+    indexed_contig, variants_to_phase = precleaning(
+        indexed_contig, variants_to_phase, target.pos, pileup
     )
+    
+    if not variants_to_phase:
+        return None
+    else:
+        variants_in_non_targets, mut_frac = variants_in_non_target_pileup(
+            pileup, target
+        )
+        if mut_frac > 0.01:
+            return None
 
-    
-    deletables = deletable_variants(pileup, target)
-    
-    lt_loci, rt_loci, tmp = [], [], variants_list
+    lt_loci, rt_loci, tmp = [], [], variants_to_phase
     for var in tmp:
-        if is_deletable(var, indexed_contig[var.pos][2], deletables, dbsnp):
+        if is_deletable(var, variants_in_non_targets, indel_repeat_thresh, dbsnp):
             if var.pos < target.pos:
                 lt_loci.append(var.pos)
             elif var.pos > target.pos:
                 rt_loci.append(var.pos)
 
-            variants_list.remove(var)
+            variants_to_phase.remove(var)
     
-    if not variants_list:
+    if not variants_to_phase:
         return None
 
     lt_end = max(lt_loci) if lt_loci else -np.inf
     rt_end = min(rt_loci) if rt_loci else np.inf
 
-    if are_scattered_snvs(indexed_contig, variants_list, target):
-        return None
-    
     remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
-    
-    remove_common_substrings(indexed_contig, target.pos, max_common_str_len)
 
+    mismatches_to_phase = [var for var in variants_to_phase if not var.is_indel]
+    non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel]
+
+    if mismatches_to_phase:
+        if not non_target_indels_to_phase:
+            peak_locs = locate_mismatch_cluster_peaks(
+                indexed_contig, mismatches_to_phase, target, snv_neighborhood
+            )
+
+            if peak_locs:
+                remove_deletables(
+                    indexed_contig, peak_locs[0], target.pos, peak_locs[1]
+                )
+            else:
+                return None
+        else:
+            target_len = len(target.indel_seq)
+            non_target_max_len = max(
+                [len(var.indel_seq) for var in non_target_indels_to_phase]
+            )
+
+            if max(target_len, non_target_max_len) < 4:
+                indel_neighborhood = int(indel_neighborhood / 2)
+
+            remove_common_substrings(indexed_contig, target.pos, indel_neighborhood)
+    
     cpos = 0
     cref = ""
     calt = ""
@@ -75,8 +118,12 @@ def suggest_from_alignment(
         calt += v[1]
 
     cvar = Variant(target.chrom, cpos, cref, calt, target.reference).normalize()
-    
-    if SequenceMatcher(None, cvar.ref, cvar.alt).ratio() > 0.75:
+
+    if (
+        len(cvar.ref) > 14
+        and len(cvar.alt) > 14
+        and SequenceMatcher(None, cvar.ref, cvar.alt).ratio() > 0.75
+    ):
         return None
 
     if cvar != target:
@@ -85,9 +132,22 @@ def suggest_from_alignment(
         return None
 
 
-def precleaning(genome_indexed_contig, variants_list, target_pos):
+def seq_complexity(contig, snv_neighborhood, indel_neighorhood):
+
+    splits = contig.get_reference_seq(split=True)
+    lt_flank, rt_flank = splits[0], splits[2]
+    neighorbood = min(snv_neighborhood, indel_neighorhood, len(lt_flank), len(rt_flank))
+
+    return min(
+        linguistic_complexity(lt_flank[-neighorbood:]),
+        linguistic_complexity(rt_flank[:neighorbood]),
+    )
+
+
+def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
     lt_loci, rt_loci = [], []
 
+    # filter low qual loci
     for k, v in genome_indexed_contig.items():
         ref, alt, score = v[0], v[1], v[2]
         if not ref or not alt:
@@ -102,7 +162,7 @@ def precleaning(genome_indexed_contig, variants_list, target_pos):
             elif k > target_pos:
                 rt_loci.append(k)
 
-        elif score < score_lim(ref, alt):
+        elif score < score_thresh(ref, alt):
             if k < target_pos:
                 lt_loci.append(k)
             elif k > target_pos:
@@ -110,6 +170,19 @@ def precleaning(genome_indexed_contig, variants_list, target_pos):
 
     lt_lim = max(lt_loci) if lt_loci else -np.inf
     rt_lim = min(rt_loci) if rt_loci else np.inf
+
+    # within the same exon
+    spliced_subreads = [
+        read["covering_subread"]
+        for read in pileup
+        if read["is_target"] and read["covering_subread"]
+    ]
+
+    if spliced_subreads:
+        lt_exon_end = min([subread[0] for subread in spliced_subreads])
+        rt_exon_end = max([subread[1] for subread in spliced_subreads])
+        lt_lim = max(lt_lim, lt_exon_end)
+        rt_lim = min(rt_lim, rt_exon_end)
 
     tmp = genome_indexed_contig.copy()
     for k, v in genome_indexed_contig.items():
@@ -120,121 +193,134 @@ def precleaning(genome_indexed_contig, variants_list, target_pos):
 
     return tmp, variants_list
 
-def score_lim(ref, alt):
+
+def score_thresh(ref, alt):
     if len(ref) == len(alt) == 1:
-        return 0.7
-    elif len(ref) > len(alt):
-        return 0.65
+        if ref == alt:
+            return 0.76
+        else:
+            return 0.86
+    elif len(ref) > 6:
+        return 0.6
     elif len(alt) > 6:
         return 0.5
     else:
-        return 0.6
+        return 0.67
 
 
+def locate_mismatch_cluster_peaks(
+    indexed_contig, mismatches_to_phase, target, snv_neighborhood
+):
 
-def are_scattered_snvs(indexed_contig, variants_list, target, neighborhood=10):
+    # mismatches = [var for var in variants_to_phase if not var.is_indel]
+    # non_target_indels = [var for var in variants_to_phase if var.is_indel]
 
-    mismatches = [var for var in variants_list if not var.is_indel]
-    
-    if not mismatches:
-        return False
+    # if not mismatches or non_target_indels:
+    #    return False
 
-    lt_score, lt_cluster_center = cluster_center(indexed_contig, mismatches, target, left=True)
-    rt_score, rt_cluster_center = cluster_center(indexed_contig, mismatches, target, left=False)
-    
-    if lt_score and target.pos - neighborhood <= lt_cluster_center < target.pos:
-        if rt_cluster_center == np.inf:
-            pass
-        elif rt_score and target.pos < rt_cluster_center <= target.pos + neighborhood:
-            pass
-        else:
-            return True
-    elif rt_score and target.pos < rt_cluster_center <= target.pos + neighborhood:
-        if lt_cluster_center == -np.inf:
-            pass
-        elif lt_score and target.pos - neighborhood <= lt_cluster_center < target.pos:
+    lt_peak, lt_peak_pos = calc_peak(
+        indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=True
+    )
+    rt_peak, rt_peak_pos = calc_peak(
+        indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=False
+    )
+
+    if lt_peak > 0:
+        if rt_peak > 0 or rt_peak_pos == np.inf:
             pass
         else:
-            return True
+            return None
+    elif rt_peak > 0:
+        if lt_peak > 0 or lt_peak_pos == -np.inf:
+            pass
+        else:
+            return None
     else:
-        return True
-    
-    if is_enriched_in_near_five(mismatches, target):
-        return False
-    else:
-        return True
-    
+        return None
 
-def cluster_center(indexed_contig, mismatches, target, left):
+    # return (lt_peak_pos - 1, rt_peak_pos + 1)
+    if is_tight_cluster(mismatches_to_phase, target, snv_neighborhood):
+        return (lt_peak_pos - 1, rt_peak_pos + 1)
+    else:
+        return None
+
+
+def calc_peak(indexed_contig, mismatches, target, snv_neighborhood, left):
     target_pos = target.pos
+
     if left:
         loci = [k for k, v in indexed_contig.items() if k <= target_pos][::-1]
-        snv_loci = [var.pos for var in mismatches if var.pos < target_pos]      
+        snv_loci = [var.pos for var in mismatches if var.pos < target_pos]
     else:
         loci = [k for k, v in indexed_contig.items() if k > target_pos]
         snv_loci = [var.pos for var in mismatches if var.pos > target_pos]
-   
+
     score, gain = 0.0, 1.0
-    max_locus = -np.inf if left else np.inf
-    
+    peak_locus = -np.inf if left else np.inf
+
     if not snv_loci:
-        return score, max_locus
-    
+        return score, peak_locus
+
     indel_len = len(target.indel_seq)
-    max_score = score
+    # peak = score
     for i, locus in enumerate(loci):
-        
+
         if locus in snv_loci:
             score += gain
         else:
-            score += loss(i, indel_len)
+            score += loss(i, indel_len, snv_neighborhood)
 
-        if score > max_score:
-            max_score = score
-            max_locus = locus
-    
-    return max_score, max_locus
+        # if score > peak:
+        #    peak = score
+        #    peak_locus = locus
 
-
-def loss(i, indel_len):
-    if i < 4:
-        return -0.1
-    elif 4 <= i and indel_len < 10:
-        return -0.4
-    elif 4 <= i and indel_len >= 10:
-        return -0.2
+    return score, peak_locus
 
 
-def is_enriched_in_near_five(mismatches, target):
-    lt_near_snvs = [var for var in mismatches if target.pos - 5 <= var.pos < target.pos]
-    lt_far_snvs = [var for var in mismatches if var.pos < target.pos - 5]   
-    
+def loss(i, indel_len, snv_neighborhood):
+    if indel_len < 10:
+        return -1 * min(i * 1 / snv_neighborhood, 1.0)
+    else:
+        return -1 * min(i * 1 * 0.6 / snv_neighborhood, 1.0)
+
+
+def is_tight_cluster(mismatches, target, snv_neighborhood):
+    neigborhood = snv_neighborhood / 2
+
+    lt_near_snvs = [
+        var for var in mismatches if target.pos - neigborhood <= var.pos < target.pos
+    ]
+    lt_far_snvs = [var for var in mismatches if var.pos < target.pos - neigborhood]
+
     rt_margin = 0 if target.is_ins else len(target.indel_seq)
-    rt_near_snvs = [var for var in mismatches if target.pos < var.pos <= target.pos + rt_margin +5]
-    rt_far_snvs = [var for var in mismatches if target.pos + rt_margin + 5 < var.pos]
-     
-    if len(lt_near_snvs) >= 3:
-        return True
-    elif len(lt_near_snvs) > len(lt_far_snvs):
+    rt_near_snvs = [
+        var
+        for var in mismatches
+        if target.pos < var.pos <= target.pos + rt_margin + neigborhood
+    ]
+    rt_far_snvs = [
+        var for var in mismatches if target.pos + rt_margin + neigborhood < var.pos
+    ]
+
+    if len(lt_near_snvs) > len(lt_far_snvs):
         return True
 
-    if len(rt_near_snvs) >= 3:
-        return True
-    elif len(rt_near_snvs) >  len(rt_far_snvs):
+    if len(rt_near_snvs) > len(rt_far_snvs):
         return True
 
     return False
 
 
-def deletable_variants(pileup, target):
+# @profile
+def variants_in_non_target_pileup(pileup, target):
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)
         for read in pileup
-        if not read["is_target"] and not read["is_dirty"]
+        if not read["is_target"]
     ]
-
+    
     if not nontarget_pileup:
-        return []
+        return [], 0.0
 
     margin = max(10, min(20, len(target.indel_seq) * 2))
     indels = [
@@ -247,35 +333,40 @@ def deletable_variants(pileup, target):
         < target.pos
         < read["covering_subread"][1] - margin
     ]
-
+    
     mismatches = [
         Variant(target.chrom, v[0], v[1], v[2], target.reference)
         for read in nontarget_pileup
-        for v in read["mismatches"] if v[3] > 24
+        for v in read["mismatches"]
     ]
-    
-    non_target_depth = len(nontarget_pileup)
-    mismatches = [var for var, cnt in Counter(mismatches).items() if cnt / non_target_depth > 0.05]
-    
-    return set(indels + mismatches)
+
+    # lq_mismatch_num = sum(True for data in mismatch_data if data[1] < 20)
+
+    # mismatches = [data[0] for data in mismatch_data if data[1] > 24]
+
+    nontarget_pileup_vol = sum(
+        max(0, len(read["ref_seq"]) - 20) for read in nontarget_pileup
+    )
+
+    mismatches = [
+        var
+        for var, cnt in Counter(mismatches).items()
+        if cnt / len(nontarget_pileup) > 0.05
+    ]
+
+    mutation_frac = (len(mismatches) + len(indels)) / nontarget_pileup_vol
+
+    return set(indels + mismatches), mutation_frac
 
 
-def is_deletable(variant, consensus_score, deletable_variants, dbsnp):
+def is_deletable(variant, deletable_variants, indel_repeat_thresh, dbsnp):
 
     if variant in deletable_variants:
         return True
 
     if variant.is_indel:
-        rep = repeats(variant)
-        if len(variant.indel_seq) < 4:
-            if rep > 1:
-                return True
-
-            multiallelic = [
-                True for var in deletable_variants if var.pos == variant.pos
-            ]
-            if multiallelic:
-                return True
+        if repeats(variant) >= indel_repeat_thresh:
+            return True
 
     if dbsnp:
         hits = variant.query_vcf(dbsnp)
@@ -319,7 +410,7 @@ def get_freq(freqinfo):
 
 def remove_deletables(indexed_contig, lt_end, target_pos, rt_end):
     tmp = indexed_contig.copy()
-    
+
     for k, v in tmp.items():
         if k <= lt_end < target_pos:
             del indexed_contig[k]
@@ -328,7 +419,7 @@ def remove_deletables(indexed_contig, lt_end, target_pos, rt_end):
                 del indexed_contig[k]
             else:
                 break
-    
+
     tmp = OrderedDict(reversed(list(tmp.items())))
     for k, v in tmp.items():
         if target_pos < rt_end <= k:
@@ -358,32 +449,38 @@ def remove_common_substrings(indexed_contig, target_pos, max_common_str_len):
 def trim_common(indexed_contig, commons, max_common_str_len, left):
     if not left:
         commons[::-1]
-    
+
     deletable_commons = []
     for sub_str in commons:
 
         if sub_str[0] == sub_str[-1]:
             start = sub_str[0]
         else:
-            start = search_nearest_lt_locus(indexed_contig, sub_str[0])
+            start = search_nearest_lt_locus(indexed_contig, sub_str[0], left)
 
         end = sub_str[-1]
         start_event = indexed_contig[start]
         end_event = indexed_contig[end]
 
-        event = start_event if left else end_event
+        # event = start_event if left else end_event
 
-        if len(event[0]) != len(event[1]):
-            break
-        else:
-            sub_str_len = end - start
-            if sub_str_len >= max_common_str_len:
-                if left:
-                    deletable_commons.append(end) 
-                else:
-                    deletable_commons.append(start)
-     
-   
+        sub_str_len = end - start
+        if sub_str_len >= max_common_str_len:
+            if left:
+                deletable_commons.append(end)
+            else:
+                deletable_commons.append(start)
+
+        # if len(event[0]) != len(event[1]):
+        #    break
+        # else:
+        #    sub_str_len = end - start
+        #    if sub_str_len >= max_common_str_len:
+        #        if left:
+        #            deletable_commons.append(end)
+        #        else:
+        #            deletable_commons.append(start)
+
     if deletable_commons:
         loci = [item[0] for item in list(indexed_contig.items())]
         if left:
@@ -395,11 +492,15 @@ def trim_common(indexed_contig, commons, max_common_str_len, left):
             lim = min(deletable_commons)
             for locus in loci:
                 if locus > lim:
-                    del indexed_contig[locus]        
-                   
-          
-def search_nearest_lt_locus(indexed_contig, pos):
-    not_found = True
+                    del indexed_contig[locus]
+
+
+def search_nearest_lt_locus(indexed_contig, pos, left=True):
+    if left:
+        not_found = True
+    else:
+        not_found = False if indexed_contig.get(pos, None) else True
+
     while not_found:
         pos -= 1
 
@@ -417,13 +518,13 @@ def profile_common_substrings(indexed_contig):
 
     contig_pos = items[0][0]
     contig_end = items[-1][0]
-    
+
     while contig_pos < contig_end:
         common_sub_str = extend_sub_str(contig_pos, indexed_contig)
         end = common_sub_str[-1]
         commons.append(common_sub_str)
         contig_pos = find_next_rt_locus(indexed_contig, end, contig_end)
-        
+
     return commons
 
 
@@ -433,8 +534,9 @@ def find_next_rt_locus(indexed_contig, pos, contig_end):
     while not found and pos < contig_end:
         pos += 1
         found = indexed_contig.get(pos, False)
-    
+
     return pos
+
 
 def extend_sub_str(start, indexed_contig):
     common_start, common_end = start, start

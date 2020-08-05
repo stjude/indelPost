@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
+#cython: profile=False
 
+cimport cython
 import random
 import numpy as np
-from .contig import Contig
 from .pileup import (
-    make_pileup,
     update_pileup,
     retarget,
     spliced_reference,
@@ -15,31 +14,73 @@ from .pileup import (
 from .equivalence import find_by_equivalence
 from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
-from .alleles import suggest_from_alignment
-from .alleles_working import hard_phase_nearby_variants
-from .utilities import get_local_reference, split
+from .alleles import hard_phase_nearby_variants
+from .utilities import get_local_reference
 
+from indelpost.pileup cimport make_pileup
+from indelpost.utilities cimport split
+from indelpost.contig cimport Contig 
+
+from indelpost.variant cimport Variant
+
+from pysam.libcalignmentfile cimport AlignmentFile
 
 random.seed(123)
 
+cdef class VariantAlignment:
+    """Class to work with indels in the BAM file.
 
-class VariantAlignment(object):
-    def __init__(
+    Parameters
+    ----------
+    variant : Variant
+        :class:`~indelpost.Variant` object representing the target indel.
+    
+    bam : pysam.AlignmentFile
+        BAM file supplied as
+        `pysam.AlignmentFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.AlignmentFile>`__ object.
+
+    window : integer
+        indels will ba analyzed within the input indel position +/- window. Default to 50.
+
+    exclude_duplicates : bool
+        True to exclude reads with the 
+        `MarkDuplicate <https://broadinstitute.github.io/picard/command-line-overview.html#MarkDuplicates>`__ signature.
+        Default to True. 
+
+    retarget : bool
+        True to re-target the target if the input indel is not found after left-aligning the pileup.
+        Default to True
+    
+    retarget_window : integer
+        retarggeting will be performed within the input indel position +/- retarget_window. Default to 30.
+    """
+    cdef Variant target, __target
+    cdef AlignmentFile bam
+    cdef int window, retarget_window, mapqthresh
+    cdef int downsamplethresh, basequalthresh, match_score
+    cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
+    cdef float retarget_cutoff, __sample_factor, low_qual_frac_thresh
+    cdef bint exclude_duplicates, retarget, perform_retarget, is_spurious_overhang
+    cdef list __pileup
+    cdef readonly Contig contig
+    
+    def __cinit__(
         self,
-        target,
-        bam,
-        window=50,
-        exclude_duplicates=True,
-        retarget=True,
-        retarget_window=30,
-        retarget_cutoff=0.6,
-        mapqthresh=20,
-        downsamplethresh=30000,
-        basequalthresh=20,
-        match_score=2,
-        mismatch_penalty=2,
-        gap_open_penalty=3,
-        gap_extension_penalty=1,
+        Variant target,
+        AlignmentFile bam,
+        int window=50,
+        bint exclude_duplicates=True, 
+        bint retarget=True,
+        int retarget_window=30,
+        float retarget_cutoff=0.6,
+        int mapqthresh=20,
+        float low_qual_frac_thresh=0.2,
+        int downsamplethresh=30000,
+        int basequalthresh=20,
+        int match_score=2,
+        int mismatch_penalty=2,
+        int gap_open_penalty=3,
+        int gap_extension_penalty=1,
     ):
         
         if not target.is_non_complex_indel():
@@ -54,6 +95,7 @@ class VariantAlignment(object):
         self.retarget_window = retarget_window
         self.retarget_cutoff = retarget_cutoff
         self.mapqthresh = mapqthresh
+        self.low_qual_frac_thresh = low_qual_frac_thresh
         self.downsamplethresh = downsamplethresh  # should allow > 1000
         self.basequalthresh = basequalthresh
         self.match_score = match_score
@@ -61,9 +103,9 @@ class VariantAlignment(object):
         self.gap_open_penalty = gap_open_penalty
         self.gap_extension_penalty = gap_extension_penalty
 
-        self.__pileup, self.__contig = self.__parse_pileup()
-
-    def __parse_pileup(self, contig=None, retargeted=False):
+        self.__pileup, self.contig = self.__parse_pileup()
+    
+    cdef __parse_pileup(self, Contig contig=None, bint retargeted=False):
         """Dictize reads for target indel and make target indel template by consensus
 
         bam (pysam.AlignmentFile)
@@ -72,6 +114,8 @@ class VariantAlignment(object):
         template (bool): None if no indel template supplied
         """
 
+        cdef list pileup
+        
         # equivalence search
         if retargeted:
             pileup = self.__pileup
@@ -85,8 +129,8 @@ class VariantAlignment(object):
                 downsamplethresh=self.downsamplethresh,
                 basequalthresh=self.basequalthresh,
             )
-
-            self.__target, pileup = find_by_equivalence(
+            
+            self.__target, pileup, exptension_penalty_used = find_by_equivalence(
                 self.__target,
                 pileup,
                 self.match_score,
@@ -95,19 +139,31 @@ class VariantAlignment(object):
                 self.gap_extension_penalty,
             )
 
+            if self.target != self.__target:
+                    self.__target, pileup = update_pileup(
+                        pileup,
+                        self.__target,
+                        self.match_score,
+                        self.mismatch_penalty,
+                        self.gap_open_penalty,
+                        self.gap_extension_penalty,
+                        bypass_search=True
+                    )
+
             contig = Contig(
                 self.__target,
                 preprocess_for_contig_construction(
                     self.__target,
+                    self.target,
                     pileup,
                     self.match_score,
                     self.mismatch_penalty,
                     self.gap_open_penalty,
-                    self.gap_extension_penalty,
+                    exptension_penalty_used,
                 ),
             )
 
-            self.is_bad_overhang = False
+            self.is_spurious_overhang = False
             if contig.failed:
 
                 within = min(self.retarget_window, len(self.__target.indel_seq) * 3)
@@ -126,7 +182,7 @@ class VariantAlignment(object):
                     )
                     if not non_spurious_overhangs:
                         contig = Contig(self.__target, [])
-                        self.is_bad_overhang = True
+                        self.is_spurious_overhang = True
                         return pileup, contig
                     else:
                         res = retarget(
@@ -139,7 +195,7 @@ class VariantAlignment(object):
                         )
                         if not res:
                             contig = Contig(self.__target, [])
-                            self.is_bad_overhang = True
+                            self.is_spurious_overhang = True
                             return pileup, contig
                 else:
                     res = retarget(
@@ -158,10 +214,9 @@ class VariantAlignment(object):
                 # if retargeted successfully -> make template based on the retarget
                 if res:
                     self.__target, retarget_reads = res[0], res[1]
-                    self.__target, self.__pileup = update_pileup(
+                    self.__target, self.__pileup, exptension_penalty_used = update_pileup(
                         pileup,
                         self.__target,
-                        retarget_reads,
                         self.match_score,
                         self.mismatch_penalty,
                         self.gap_open_penalty,
@@ -172,11 +227,12 @@ class VariantAlignment(object):
                         self.__target,
                         preprocess_for_contig_construction(
                             self.__target,
+                            self.__target,
                             self.__pileup,
                             self.match_score,
                             self.mismatch_penalty,
                             self.gap_open_penalty,
-                            self.gap_extension_penalty,
+                            exptension_penalty_used,
                         ),
                     )
 
@@ -185,7 +241,7 @@ class VariantAlignment(object):
 
                 # no target in this pileup
                 else:
-                    contig = Contig(self.__target, [])
+                    
                     return pileup, contig
 
         # soft-clip realn & SW realn
@@ -200,11 +256,16 @@ class VariantAlignment(object):
                 self.gap_open_penalty,
                 self.gap_extension_penalty,
             )
-
+        
         return pileup, contig
 
+
+    def target_indel(self):
+        return self.__target
+
+    
     def count_alleles(
-        self, fwrv=False, by_fragment=False, qualitywindow=None, qualitythresh=None
+        self, bint fwrv=False, bint by_fragment=False, int qualitywindow=0, int qualitythresh=0
     ):
         """Unique-count reads with and without target indel
 
@@ -215,6 +276,8 @@ class VariantAlignment(object):
         allele counts (tuple): (ref_count, alt_count)
         """
 
+        cdef dict read
+        
         pos, indel_len = self.target.pos, len(self.target.indel_seq)
         margin = min(indel_len / 2, 5) if indel_len > 3 else indel_len
 
@@ -278,27 +341,25 @@ class VariantAlignment(object):
                 int(fwrv_target * self.__sample_factor),
             )
 
-    def suggest(self, dbsnp=None):
-        return suggest_from_alignment(
-            self.__target, self.__contig, self.__pileup, dbsnp
-        )
 
     def to_complex(
         self,
         snv_neigborhood=15,
-        indel_nearby=20,
-        indel_repeat_thresh=2,
-        mapq_thresh=20,
+        indel_nearby=15,
+        indel_repeat_thresh=5,
+        sequence_complexity_thresh=0.02,
         dbsnp=None,
     ):
         return hard_phase_nearby_variants(
             self.__target,
-            self.__contig,
+            self.contig,
             self.__pileup,
+            self.mapqthresh,
+            self.low_qual_frac_thresh,
             snv_neigborhood,
             indel_nearby,
             indel_repeat_thresh,
-            mapq_thresh,
+            sequence_complexity_thresh,
             dbsnp,
         )
 
@@ -326,7 +387,7 @@ def is_quality_read(read, pos, qualitywindow, qualitythresh):
         return lt_median > qualitythresh and rt_median > qualitythresh
 
 
-def count_as_non_target(read, pos, margin):
+cdef bint count_as_non_target(dict read, int pos, int margin):
     if read["is_target"] or not read["is_covering"]:
         return False
     else:
@@ -337,14 +398,19 @@ def count_as_non_target(read, pos, margin):
             return True
 
 
-def preprocess_for_contig_construction(
-    target,
-    pileup,
-    match_score,
-    mismatch_penalty,
-    gap_open_penalty,
-    gap_extension_penalty,
+cdef list preprocess_for_contig_construction(
+    Variant target,
+    Variant orig_target,
+    list pileup,
+    int match_score,
+    int mismatch_penalty,
+    int gap_open_penalty,
+    int gap_extension_penalty,
 ):
+    
+    cdef dict read
+    cdef int clips, nonclips
+
     if not pileup:
         return pileup
 
@@ -359,21 +425,23 @@ def preprocess_for_contig_construction(
         read for read in targetpileup if not "S" in read["cigar_string"]
     ]
 
+    
     clips = len(clipped_targetpileup)
     nonclips = len(nonclipped_targetpileup)
 
-    if nonclips > 19:
+    if target == orig_target and nonclips > 19:
         targetpileup = random.sample(nonclipped_targetpileup, 20)
     else:
-        if nonclips + clips > 19:
-            clipped_targetpileup = random.sample(clipped_targetpileup, 20 - nonclips)
+        if nonclips < 20 and nonclips + clips > 19:
+            targetpileup = random.sample(clipped_targetpileup, 20 - nonclips)
 
-        ref_seq, lt_len = get_local_reference(target, pileup)
+        ref_seq, lt_len = get_local_reference(orig_target, pileup)
         aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
-        ref_start = target.pos + 1 - lt_len
+        ref_start = orig_target.pos + 1 - lt_len
+        
         
         is_gapped_aln = False
-        clipped_targetpileup = [
+        targetpileup = [
             update_read_info(
                 read,
                 target,
@@ -384,12 +452,19 @@ def preprocess_for_contig_construction(
                 ref_seq,
                 ref_start,
             )
-            for read in clipped_targetpileup
             if not read.get("cigar_updated", False)
+            else read
+            for read in targetpileup
         ]
 
-        targetpileup = nonclipped_targetpileup + clipped_targetpileup
-
+        updated_cigars = [read for read in targetpileup if read.get("cigar_updated", False)]
+        
+        if not updated_cigars:
+            
+            return targetpileup
+        else:
+            targetpileup = updated_cigars
+    
     return targetpileup
 
 

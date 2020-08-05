@@ -2,21 +2,23 @@
 import re
 import numpy as np
 from collections import OrderedDict
-#from .pileup import read_updater
+
+# from .pileup import read_updater
 from .utilities import most_common, to_flat_list
-#from .utilities import *
+
+# from .utilities import *
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 def make_consensus(target, targetpileup):
-    
+
     target_pos, target_type, target_len = (
         target.pos,
         target.variant_type,
         len(target.indel_seq),
     )
-    
+
     lt_indexed = [
         index_bases(
             read["read_start"],
@@ -31,7 +33,7 @@ def make_consensus(target, targetpileup):
         )
         for read in targetpileup
     ]
-    
+
     rt_indexed = [
         index_bases(
             read["read_start"],
@@ -49,7 +51,7 @@ def make_consensus(target, targetpileup):
 
     lt_consensus = consensus_data(lt_indexed, left=True)
     rt_consensus = consensus_data(rt_indexed, left=False)
-    
+
     return lt_consensus, rt_consensus
 
 
@@ -57,7 +59,7 @@ def index_bases(
     read_pos, target_pos, target_type, target_len, cigar, flank, ref, qual, left
 ):
     indexedbases = {}
-    
+
     if left:
         current_pos = read_pos
     else:
@@ -66,11 +68,11 @@ def index_bases(
         if target_type == "I":
             current_pos = target_pos + 1
         else:
-            #ref = ref[target_len:]
+            # ref = ref[target_len:]
             current_pos = target_pos + target_len + 1
 
     for c in cigar:
-        
+
         event, event_len = c[-1], int(c[:-1])
 
         if event == "M" or event == "S":
@@ -80,7 +82,7 @@ def index_bases(
                     ref = ref[1:]
                 else:
                     indexedbases[current_pos] = ("", flank[0], qual[0])
-                
+
                 flank = flank[1:]
                 qual = qual[1:]
                 current_pos += 1
@@ -117,8 +119,7 @@ def index_bases(
 
         elif event == "N":
             current_pos += event_len
-    
-    
+
     return indexedbases
 
 
@@ -127,27 +128,29 @@ def consensus_data(indexedbases_list, left):
     consensus_index = OrderedDict()
     skip_loci = []
     for locus in locus_list(indexedbases_list, left):
-        ref, consensus_base, consensus_score = get_consensus_base(indexedbases_list, locus)
-        
+        ref, consensus_base, consensus_score = get_consensus_base(
+            indexedbases_list, locus
+        )
+
         if len(ref) > len(consensus_base):
             del_len = len(ref) - len(consensus_base)
             skip_loci += [locus + i for i in range(1, del_len + 1)]
-            
+
         consensus_index[locus] = (ref, consensus_base, consensus_score)
-    
+
     for locus in skip_loci:
         if locus in consensus_index:
             del consensus_index[locus]
-    
+
     conseq, refseq = "", ""
     scores = []
     prev_ref = ""
     prev_locus = -1
     ref_end = -1
     for locus, data in consensus_index.items():
-        
+
         ref, consensus_base, consensus_score = data[0], data[1], data[2]
-        
+
         if left and len(ref) != len(consensus_base):
             ref = ref[::-1]
             consensus_base = consensus_base[::-1]
@@ -155,10 +158,10 @@ def consensus_data(indexedbases_list, left):
         refseq += ref
         conseq += consensus_base
         scores += [consensus_score] * len(consensus_base)
-        
+
         if prev_ref and not ref:
             ref_end = prev_locus
-        
+
         prev_locus = locus
         prev_ref = ref
 
@@ -166,7 +169,7 @@ def consensus_data(indexedbases_list, left):
         conseq = conseq[::-1]
         refseq = refseq[::-1]
         scores = scores[::-1]
-     
+
     return consensus_index, ref_end, refseq, conseq, scores
 
 
@@ -193,22 +196,34 @@ def get_consensus_base(indexedbases_list, locus, qual_lim=23):
         for indexedbases in indexedbases_list
         if indexedbases.get(locus, False)
     ]
-    
-    
+
+    if not bases:
+        ref = most_common(refs) if refs else ""
+        return ref, "N", 0.0
+
     hq_bases = [base for base, qual in zip(bases, quals) if qual > qual_lim]
 
-    ref = most_common(refs) if refs else ""
+    refs = refs + [""] * (len(bases) - len(refs))
 
-    if ref and bases:
-        consensus_base = most_common(bases)
-        consensus_score = bases.count(consensus_base) / len(bases)
+    pairs = [(ref, base) for ref, base in zip(refs, bases)]
+
+    consensus_pair = most_common(pairs)
+    consensus_score = pairs.count(consensus_pair) / len(pairs)
+
+    ref, consensus_base = consensus_pair[0], consensus_pair[1]
+
+    if ref:
         if ref != consensus_base:
             if not consensus_base in hq_bases:
                 consensus_base = "N"
                 consensus_score = 0.0
-    elif not bases:
-         consensus_base = "N"
-         consensus_score = 0.0
+
+            # indels are mutated back to ref -> unlikely
+            # elif len(ref) < len(consensus_base) and ref in hq_bases:
+            #    consensus_score = - consensus_score
+            # elif len(ref) > len(consensus_base) and consensus_base in refs:
+            #    consensus_score = - consensus_score
+
     else:
         if hq_bases:
             consensus_base = most_common(hq_bases)
@@ -226,21 +241,21 @@ def consensus_refseq(refseq_lst, left=False):
         refseq_lst = [seq[::-1].upper() for seq in refseq_lst]
     else:
         refseq_lst = [seq.upper() for seq in refseq_lst]
-         
+
     consensus_seq = ""
     consensus_rates = []
     for i in range(len(max(refseq_lst, key=len))):
         ith_chars = [ith_char(seq, i) for seq in refseq_lst if ith_char(seq, i)]
         cosensus_base = most_common(ith_chars)
-            
+
         if cosensus_base == "N":
             consensus_rate = 0.0
         else:
             consensus_rate = ith_chars.count(cosensus_base) / len(ith_chars)
-        
+
         consensus_seq += cosensus_base
         consensus_rates.append(consensus_rate)
-    
+
     if left:
         consensus_seq = consensus_seq[::-1]
         consensus_rates = consensus_rates[::-1]
@@ -272,14 +287,20 @@ def is_compatible(query, subject, indel_type, partial_match=True):
         query.get("del_seq", ""),
         query["rt_flank"],
     )
-     
+
     query_indel_seq = query_indel if query_indel else query_del
 
     # left-align check (if not, an alternative alignment of something else)
     if query_indel_seq and query_lt_flank and query_lt_flank[-1] == query_indel_seq[-1]:
         return False
 
-    subject_lt_flank, subject_lt_scores, subject_indel, subject_rt_flank, subject_rt_scores = (
+    (
+        subject_lt_flank,
+        subject_lt_scores,
+        subject_indel,
+        subject_rt_flank,
+        subject_rt_scores,
+    ) = (
         subject.lt_consensus_seq,
         subject.lt_consensus_scores,
         subject.indel_seq,
@@ -305,7 +326,7 @@ def is_compatible(query, subject, indel_type, partial_match=True):
         subject_rt_flank[:rt_len],
         subject_rt_scores[:rt_len],
     )
-    
+
     if lt_query and not is_almost_same(
         lt_query[::-1], lt_subject[::-1], lt_scores[::-1]
     ):
@@ -318,7 +339,7 @@ def is_compatible(query, subject, indel_type, partial_match=True):
     rt_check = contains_repeat_end(subject_indel, rt_query, subject_rt_flank)
     if rt_query and subject_rt_flank and not rt_check:
         return False
-    
+
     # check inserted/deleted sequences for similarity
     if query_indel and indel_type == "I":
         subject_len = len(subject_indel)
@@ -406,6 +427,6 @@ def is_almost_same(
         mid_mismatches = mismatches[len_lim : (10 * len_lim)]
         far_mismatches = mismatches[(10 * len_lim) : (30 * len_lim)]
         mismatch_score = (
-            sum(near_mismatches) * 2 + sum(mid_mismatches) + sum(far_mismatches) * 0.5 
+            sum(near_mismatches) * 2 + sum(mid_mismatches) + sum(far_mismatches) * 0.5
         )
         return mismatch_score < mismatch_lim
