@@ -22,7 +22,7 @@ def find_by_equivalence(
 
     pileup = [is_target_by_equivalence(read, target) for read in pileup]
 
-    target = seek_larger_gapped_aln(
+    target, extension_penalty_used = seek_larger_gapped_aln(
         target,
         pileup,
         match_score,
@@ -31,7 +31,7 @@ def find_by_equivalence(
         gap_extension_penalty,
     )
 
-    return target, pileup
+    return target, pileup, extension_penalty_used
 
 
 def is_target_by_equivalence(read, target):
@@ -76,6 +76,7 @@ def is_target_by_equivalence(read, target):
 def get_most_centered_read(target, pileup):
 
     most_centered_read = None
+    offcenter = 0
 
     targetpileup = [read for read in pileup if read["is_target"]]
 
@@ -87,9 +88,11 @@ def get_most_centered_read(target, pileup):
             )
             for read in targetpileup
         ]
-        most_centered_read = targetpileup[dist2center.index(min(dist2center))]
 
-    return most_centered_read
+        offcenter = min(dist2center)
+        most_centered_read = targetpileup[dist2center.index(offcenter)]
+
+    return most_centered_read, offcenter
 
 
 def seek_larger_gapped_aln(
@@ -101,35 +104,33 @@ def seek_larger_gapped_aln(
     gap_extension_penalty,
 ):
 
-    read = get_most_centered_read(target, pileup)
+    read, offcenter = get_most_centered_read(target, pileup)
 
     if not read:
-        return target
-
+        return target, gap_extension_penalty
+    
     read_seq = read["read_seq"]
 
     ref_seq, lt_len = get_local_reference(target, pileup)
-
+    
+    gap_extension_penalty = 0 if offcenter > 0.35 else gap_extension_penalty
     aln = align(
         make_aligner(ref_seq, match_score, mismatch_penalty),
         read_seq,
         gap_open_penalty,
         gap_extension_penalty,
     )
-
+    
     genome_aln_pos = target.pos + 1 - lt_len + aln.reference_start
 
     indels = findall_indels(aln, genome_aln_pos, ref_seq, read_seq)
 
     if not indels:
-        return target
-
+        return target, gap_extension_penalty
+    
     closest = min([abs(target.pos - indel["pos"]) for indel in indels])
     candidates = [
-        indel
-        for indel in indels
-        if abs(target.pos - indel["pos"]) == closest
-        and indel["indel_type"] == target.variant_type
+        indel for indel in indels if abs(target.pos - indel["pos"]) == closest
     ]
 
     if candidates:
@@ -145,10 +146,15 @@ def seek_larger_gapped_aln(
             target.chrom, candidate["pos"], ref, alt, target.reference
         )
 
-        if (
-            candidate_var.pos <= target.pos
-            and target.indel_seq in candidate_var.indel_seq
-        ):
-            target = candidate_var
-
-    return target
+        if len(target.indel_seq) < len(candidate_var.indel_seq):
+            is_left_short = (
+                True
+                if (target.pos - read["aln_start"]) < (read["aln_end"] - target.pos)
+                else False
+            )
+            if (is_left_short and candidate_var.pos <= target.pos) or (
+                not is_left_short and target.pos <= candidate_var.pos
+            ):
+                target = candidate_var
+    
+    return target, gap_extension_penalty

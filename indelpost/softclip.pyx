@@ -7,7 +7,7 @@ from .utilities import get_end_pos
 from .consensus import is_compatible
 
 
-cpdef list find_by_softclip_split(Variant target, Contig contig, list pileup):
+def find_by_softclip_split(target, contig, pileup):
     """Annotate if reads contain target indel
 
     Args:
@@ -17,6 +17,7 @@ cpdef list find_by_softclip_split(Variant target, Contig contig, list pileup):
     Return:
         pileup (list): annotated pileup
     """
+    
     pos, indel_type, indel_seq = (target.pos, target.variant_type, target.indel_seq)
 
     pileup = [
@@ -30,7 +31,7 @@ cpdef list find_by_softclip_split(Variant target, Contig contig, list pileup):
     return pileup
 
 
-cdef dict find_candidate_softclips(dict read, int pos, str indel_type, str indel_seq):
+def find_candidate_softclips(read, pos, indel_type, indel_seq):
     """Find and annotate softclipped indels to be realigned
 
     Args:
@@ -72,7 +73,7 @@ cdef dict find_candidate_softclips(dict read, int pos, str indel_type, str indel
     return read
 
 
-cdef str classify_softclip_patterns(dict read, int pos):
+def classify_softclip_patterns(read, pos):
     """Annotate if softclip starts before or after indel postion
 
     Args:
@@ -87,11 +88,12 @@ cdef str classify_softclip_patterns(dict read, int pos):
     for i, c in enumerate(read["cigar_list"]):
         event, event_len = c[-1], int(c[:-1])
         event_pos += event_len
+        
         if pos <= event_pos:
             last_event = event
             is_leading = i == 0
             break
-
+    
     if last_event == "M":
         return "off_clipping"
     elif last_event == "S" and is_leading:
@@ -102,7 +104,7 @@ cdef str classify_softclip_patterns(dict read, int pos):
         return "other"
 
 
-cdef dict is_target_by_sftclp_split(dict read, int pos, str indel_type, str indel_seq, Contig contig, bint slided=False):
+def is_target_by_sftclp_split(read, pos, indel_type, indel_seq, contig, slided=False):
     """Find softclipped target indels
     
     Args:
@@ -143,7 +145,7 @@ cdef dict is_target_by_sftclp_split(dict read, int pos, str indel_type, str inde
     return read
 
 
-cdef dict split_softclipped_read(dict read, int pos, str indel_type, int indel_len):
+def split_softclipped_read(read, pos, indel_type, indel_len):
     cigar_string = read["cigar_string"]
     reverse = True if read["softclip_pattern"] == "leading" else False
     string_pos = read["read_end"] if reverse else read["read_start"]
@@ -167,8 +169,7 @@ cdef dict split_softclipped_read(dict read, int pos, str indel_type, int indel_l
     )
 
     if indel_type == "I":
-        rt_flank = rt_flank[indel_len:]
-        mid_seq = rt_flank[:indel_len]
+        mid_seq, rt_flank = rt_flank[:indel_len], rt_flank[indel_len:]
         read["del_seq"] = ""
     else:
         del_pos = get_end_pos(read["read_start"], lt_flank, cigar_string)
