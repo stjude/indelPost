@@ -23,15 +23,32 @@ def find_by_smith_waterman_realn(target_indel, contig, pileup, match_score, mism
     """
     indel_type, indel_seq = target_indel.variant_type, target_indel.indel_seq
 
-    mut_ref, ref_ref = contig.get_contig_seq(), contig.get_reference_seq()
-    
+    mut_ref_lt, mut_ref_mid, mut_ref_rt = contig.get_contig_seq(split=True)
+    ref_ref = contig.get_reference_seq()
+    mut_ref = mut_ref_lt + mut_ref_mid + mut_ref_rt
+     
+
     mut_aligner = make_aligner(mut_ref, match_score, mismatch_penalty)
     ref_aligner = make_aligner(ref_ref, match_score, mismatch_penalty)
 
     pileup = [findall_mismatches(read) for read in pileup]
 
     pileup = [
-        is_target_by_ssw(read, contig, mut_aligner, ref_aligner, gap_open_penalty, gap_extension_penalty, indel_type, mapq_lim)
+        is_target_by_ssw(
+            read, 
+            contig, 
+            mut_ref_lt,
+            mut_ref_mid,
+            mut_ref_rt,
+            mut_aligner, 
+            ref_aligner,
+            match_score,
+            mismatch_penalty, 
+            gap_open_penalty, 
+            gap_extension_penalty, 
+            indel_type, 
+            mapq_lim
+        )
         for read in pileup
     ]
 
@@ -48,8 +65,7 @@ def findall_mismatches(read, end_trim=0):
     mapped_subpreads = get_mapped_subreads(
         read["cigar_string"], aln_start, aln_end
     )
-
-    
+ 
     mismatches = []
     for subread in mapped_subpreads:
         start, end = subread[0], subread[1]
@@ -153,7 +169,23 @@ def is_worth_realn(read, qual_lim=23):
         return False
 
 
-def is_target_by_ssw(read, contig, mut_aligner, ref_aligner, gap_open_penalty, gap_extension_penalty, indel_type, mapq_lim, mapped_base_cnt_thresh=40):
+def is_target_by_ssw(
+    read, 
+    contig,
+    mut_ref_lt,
+    mut_ref_mid,
+    mut_ref_rt, 
+    mut_aligner, 
+    ref_aligner,
+    match_score,
+    mismatch_penalty, 
+    gap_open_penalty, 
+    gap_extension_penalty, 
+    indel_type, 
+    mapq_lim, 
+    mapped_base_cnt_thresh=40,
+    allow_mismatches = 2
+):
 
     # already found
     if read["is_target"]:
@@ -167,10 +199,13 @@ def is_target_by_ssw(read, contig, mut_aligner, ref_aligner, gap_open_penalty, g
     mut_aln = align(mut_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     
-    #if len(cigar_ptrn.findall(mut_aln.CIGAR)) == 1 and int(mut_aln.CIGAR[:-1]) * 2 == mut_aln.optimal_score:
-    #    print(read["read_name"])
-    #    read["is_target"] = True
-    #    return read
+    mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
+    if len(mut_cigar_list) == 1:
+        mapped_len = int(mut_cigar_list[0][:-1])
+        if mut_aln.reference_start < len(mut_ref_lt) < mapped_len:
+            if mut_aln.optimal_score >= match_score * mapped_len - (allow_mismatches * mismatch_penalty): 
+                read["is_target"] = True
+                return read
      
     if not indel_type in ref_aln.CIGAR:
         return read

@@ -62,7 +62,7 @@ def hard_phase_nearby_variants(
         )
         if mut_frac > 0.01:
             return None
-
+    
     lt_loci, rt_loci, tmp = [], [], variants_to_phase
     for var in tmp:
         if is_deletable(var, variants_in_non_targets, indel_repeat_thresh, dbsnp):
@@ -197,9 +197,9 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
 def score_thresh(ref, alt):
     if len(ref) == len(alt) == 1:
         if ref == alt:
-            return 0.76
+            return 0.7
         else:
-            return 0.86
+            return 0.8
     elif len(ref) > 6:
         return 0.6
     elif len(alt) > 6:
@@ -340,10 +340,6 @@ def variants_in_non_target_pileup(pileup, target):
         for v in read["mismatches"]
     ]
 
-    # lq_mismatch_num = sum(True for data in mismatch_data if data[1] < 20)
-
-    # mismatches = [data[0] for data in mismatch_data if data[1] > 24]
-
     nontarget_pileup_vol = sum(
         max(0, len(read["ref_seq"]) - 20) for read in nontarget_pileup
     )
@@ -360,7 +356,7 @@ def variants_in_non_target_pileup(pileup, target):
 
 
 def is_deletable(variant, deletable_variants, indel_repeat_thresh, dbsnp):
-
+    
     if variant in deletable_variants:
         return True
 

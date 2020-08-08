@@ -259,7 +259,7 @@ cdef class Variant:
         return res
 
     
-    def query_vcf(self, VariantFile vcf, matchby="equivalence", window=50, as_dict=True):
+    def query_vcf(self, VariantFile vcf, matchby="normalization", window=50, as_dict=True):
         """finds VCF records matching this :class:`~indelpost.Variant` object.
 
         Parameters
@@ -270,7 +270,7 @@ cdef class Variant:
             `pysam.VariantFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.VariantFile>`__ object.
 
         matchby : string
-            "equivalence"
+            "normalization"
             "locus"
             "exact"
             
@@ -278,7 +278,7 @@ cdef class Variant:
             VCF records  
 
         """
-        matchbys = ["equivalence", "locus", "exact"]
+        matchbys = ["normalization", "locus", "exact"]
         if not matchby in matchbys:
             raise ValueError("match by one of: %s" % matchbys)
         
@@ -302,7 +302,12 @@ cdef class Variant:
         hits = [
                 record.orig
                 for record in records
-                if match_indels(Variant(self.chrom, record.pos, record.ref, record.alt, self.reference), self, matchby) ]
+                if match_indels(
+                    Variant(self.chrom, record.pos, record.ref, record.alt, self.reference), 
+                    self, 
+                    matchby
+                )
+        ]
         
         if as_dict:
             hits = [

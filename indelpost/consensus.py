@@ -196,7 +196,7 @@ def get_consensus_base(indexedbases_list, locus, qual_lim=23):
         for indexedbases in indexedbases_list
         if indexedbases.get(locus, False)
     ]
-
+   
     if not bases:
         ref = most_common(refs) if refs else ""
         return ref, "N", 0.0

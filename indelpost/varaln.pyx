@@ -3,6 +3,8 @@
 cimport cython
 import random
 import numpy as np
+from functools import partial
+
 from .pileup import (
     update_pileup,
     retarget,
@@ -15,7 +17,7 @@ from .equivalence import find_by_equivalence
 from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
 from .alleles import hard_phase_nearby_variants
-from .utilities import get_local_reference
+from .utilities import get_local_reference, relative_aln_pos
 
 from indelpost.pileup cimport make_pileup
 from indelpost.utilities cimport split
@@ -60,8 +62,9 @@ cdef class VariantAlignment:
     cdef int downsamplethresh, basequalthresh, match_score
     cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
     cdef float retarget_cutoff, __sample_factor, low_qual_frac_thresh
-    cdef bint exclude_duplicates, retarget, perform_retarget, is_spurious_overhang
+    cdef bint exclude_duplicates, retarget, perform_retarget
     cdef list __pileup
+    cdef readonly is_spurious_overhang
     cdef readonly Contig contig
     
     def __cinit__(
@@ -397,6 +400,9 @@ cdef bint count_as_non_target(dict read, int pos, int margin):
         if covering_subread[0] + margin < pos < covering_subread[1] - margin:
             return True
 
+def centrality(read, target_pos):
+    relative_pos = relative_aln_pos(read["ref_seq"], read["cigar_list"], read["aln_start"], target_pos)
+    return abs(0.5 - relative_pos)
 
 cdef list preprocess_for_contig_construction(
     Variant target,
@@ -432,13 +438,14 @@ cdef list preprocess_for_contig_construction(
     if target == orig_target and nonclips > 19:
         targetpileup = random.sample(nonclipped_targetpileup, 20)
     else:
-        if nonclips < 20 and nonclips + clips > 19:
-            targetpileup = random.sample(clipped_targetpileup, 20 - nonclips)
+        targetpileup = sorted(targetpileup, key=partial(centrality, target_pos=target.pos))
+        
+        if len(targetpileup) > 2:
+            targetpileup = targetpileup[: min(20, int(len(targetpileup) / 2 ))]
 
         ref_seq, lt_len = get_local_reference(orig_target, pileup)
         aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
         ref_start = orig_target.pos + 1 - lt_len
-        
         
         is_gapped_aln = False
         targetpileup = [
@@ -452,19 +459,17 @@ cdef list preprocess_for_contig_construction(
                 ref_seq,
                 ref_start,
             )
-            if not read.get("cigar_updated", False)
-            else read
             for read in targetpileup
         ]
-
+        
+        
         updated_cigars = [read for read in targetpileup if read.get("cigar_updated", False)]
         
-        if not updated_cigars:
-            
+        if not updated_cigars:    
             return targetpileup
         else:
             targetpileup = updated_cigars
-    
+
     return targetpileup
 
 

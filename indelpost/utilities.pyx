@@ -289,6 +289,29 @@ cpdef tuple split_cigar(str cigarstring, int target_pos, int start):
 #    str
 #    list 
 
+def relative_aln_pos(ref_seq, cigar_lst, aln_start, target_pos):
+    
+    current_pos = aln_start - 1
+    ref_seq_pos = 0
+    for cigar in cigar_lst:
+        event, event_len = cigar[-1], int(cigar[:-1])
+        
+        if event == "M" or event == "D":
+            current_pos += event_len
+            ref_seq_pos += event_len
+        elif event == "I" or event == "S":
+            pass
+        else:
+            current_pos += event_len
+         
+        if current_pos >= target_pos:
+            break
+    
+    ref_seq_pos += (target_pos - current_pos)   
+     
+    return ref_seq_pos / len(ref_seq)
+
+
 cdef tuple split(object data, str cigarstring, int target_pos, int string_pos, bint is_for_ref, bint reverse):
     
     cdef list cigar_lst = cigar_ptrn.findall(cigarstring)
@@ -301,8 +324,6 @@ cdef tuple split(object data, str cigarstring, int target_pos, int string_pos, b
     cdef double [:] genome_moves = np.zeros((_size,))
     
     cdef int i = 0, j = 0  
-    
-    
     
     for cigar in cigar_lst:
         event, event_len = cigar[-1], int(cigar[:-1])
