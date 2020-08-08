@@ -121,9 +121,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile refere
 
     read_seq = read.query_sequence
     read_qual = read.query_qualities
-    #ref_seq = read.get_reference_sequence()
-    ref_seq = reference.fetch(chrom, aln_start - 1, aln_end)
-    #ref_seq = reference.fetch(chrom, aln_start - 100, aln_end + 100)
+    ref_seq = get_ref_seq(chrom, aln_start, aln_end, cigar_string, cigar_list, reference)
 
     read_dict = {
         "read": read,
@@ -211,6 +209,35 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile refere
     read_dict["intron_pattern"] = intron_ptrn
 
     return read_dict
+
+cdef str get_ref_seq(
+    str chrom,
+    int aln_start, 
+    int aln_end,
+    str cigar_string, 
+    list cigar_list,
+    FastaFile reference,
+):
+    cdef int current_pos = aln_start - 1
+    
+    if not "N" in cigar_string:
+        return reference.fetch(chrom, current_pos, aln_end)
+    
+    cdef str ref_seq = ""
+    cdef str event, cigar
+    cdef int event_len
+    
+    for cigar in cigar_list:
+        event, event_len = cigar[-1], int(cigar[:-1])
+        if event == "M" or event == "D":
+            ref_seq += reference.fetch(chrom, current_pos, current_pos + event_len)
+            current_pos += event_len
+        elif event == "I" or event == "S":
+            pass
+        else:
+            current_pos += event_len
+    
+    return ref_seq
 
 
 cdef tuple leftalign_indel_read(
@@ -720,7 +747,7 @@ def update_read_info(
             indel = indels[0]
             if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
                 pass
-            elif candidate.is_del and indel["del_seq"] == candidate.indel_seq:
+            elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:
                 pass
             else:
                 read["cigar_updated"] = False

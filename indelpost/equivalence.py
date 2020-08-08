@@ -1,5 +1,5 @@
 from .variant import Variant
-from .utilities import split_cigar, get_local_reference
+from .utilities import split_cigar, get_local_reference, relative_aln_pos
 from .localn import make_aligner, align, findall_indels
 
 
@@ -76,23 +76,19 @@ def is_target_by_equivalence(read, target):
 def get_most_centered_read(target, pileup):
 
     most_centered_read = None
-    offcenter = 0
+    center_score = 0
 
     targetpileup = [read for read in pileup if read["is_target"]]
 
     if targetpileup:
-        dist2center = [
-            abs(
-                0.5
-                - (read["aln_end"] - target.pos) / (read["aln_end"] - read["aln_start"])
-            )
-            for read in targetpileup
-        ]
+        dist2center = [0.5 - relative_aln_pos(read["ref_seq"], read["cigar_list"], read["aln_start"], target.pos) for read in targetpileup]
+        abs_dist2center = [abs(i) for i in dist2center]
+        most_central = min(abs_dist2center)
+        most_centered_read = targetpileup[abs_dist2center.index(most_central)]
+        center_score = dist2center[abs_dist2center.index(most_central)]
+    
+    return most_centered_read, center_score
 
-        offcenter = min(dist2center)
-        most_centered_read = targetpileup[dist2center.index(offcenter)]
-
-    return most_centered_read, offcenter
 
 
 def seek_larger_gapped_aln(
@@ -104,30 +100,30 @@ def seek_larger_gapped_aln(
     gap_extension_penalty,
 ):
 
-    read, offcenter = get_most_centered_read(target, pileup)
+    read, center_score = get_most_centered_read(target, pileup)
 
     if not read:
         return target, gap_extension_penalty
-    
+
     read_seq = read["read_seq"]
 
     ref_seq, lt_len = get_local_reference(target, pileup)
-    
-    gap_extension_penalty = 0 if offcenter > 0.35 else gap_extension_penalty
+
+    gap_extension_penalty = 0 if abs(center_score) > 0.35 else gap_extension_penalty
     aln = align(
         make_aligner(ref_seq, match_score, mismatch_penalty),
         read_seq,
         gap_open_penalty,
         gap_extension_penalty,
     )
-    
+
     genome_aln_pos = target.pos + 1 - lt_len + aln.reference_start
 
     indels = findall_indels(aln, genome_aln_pos, ref_seq, read_seq)
 
     if not indels:
         return target, gap_extension_penalty
-    
+
     closest = min([abs(target.pos - indel["pos"]) for indel in indels])
     candidates = [
         indel for indel in indels if abs(target.pos - indel["pos"]) == closest
@@ -147,14 +143,11 @@ def seek_larger_gapped_aln(
         )
 
         if len(target.indel_seq) < len(candidate_var.indel_seq):
-            is_left_short = (
-                True
-                if (target.pos - read["aln_start"]) < (read["aln_end"] - target.pos)
-                else False
-            )
+            is_left_short = True if center_score <= 0 else False
+
             if (is_left_short and candidate_var.pos <= target.pos) or (
                 not is_left_short and target.pos <= candidate_var.pos
             ):
                 target = candidate_var
-    
+
     return target, gap_extension_penalty
