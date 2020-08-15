@@ -400,9 +400,11 @@ cdef bint count_as_non_target(dict read, int pos, int margin):
         if covering_subread[0] + margin < pos < covering_subread[1] - margin:
             return True
 
+
 def centrality(read, target_pos):
     relative_pos = relative_aln_pos(read["ref_seq"], read["cigar_list"], read["aln_start"], target_pos)
     return abs(0.5 - relative_pos)
+
 
 cdef list preprocess_for_contig_construction(
     Variant target,
@@ -441,27 +443,37 @@ cdef list preprocess_for_contig_construction(
         targetpileup = sorted(targetpileup, key=partial(centrality, target_pos=target.pos))
         
         if len(targetpileup) > 2:
-            targetpileup = targetpileup[: min(20, int(len(targetpileup) / 2 ))]
+            targetpileup = targetpileup[: min(20, int(len(targetpileup) / 1.5 ))]
 
-        ref_seq, lt_len = get_local_reference(orig_target, pileup)
-        aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
-        ref_start = orig_target.pos + 1 - lt_len
-        
+        unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, unspliced=True) 
+        unspl_aligner = make_aligner(unspl_ref_seq, match_score, mismatch_penalty)
+        unspl_start = orig_target.pos + 1 - unspl_lt_len 
+
         is_gapped_aln = False
         targetpileup = [
+            update_spliced_read_info(
+                read,
+                target,
+                orig_target,
+                is_gapped_aln,
+                match_score,
+                mismatch_penalty,
+                gap_open_penalty,
+                gap_extension_penalty,
+            )
+            if "N" in read["cigar_string"] else 
             update_read_info(
                 read,
                 target,
                 is_gapped_aln,
                 gap_open_penalty,
                 gap_extension_penalty,
-                aligner,
-                ref_seq,
-                ref_start,
-            )
+                unspl_aligner,
+                unspl_ref_seq,
+                unspl_start,
+            ) 
             for read in targetpileup
         ]
-        
         
         updated_cigars = [read for read in targetpileup if read.get("cigar_updated", False)]
         
@@ -471,6 +483,32 @@ cdef list preprocess_for_contig_construction(
             targetpileup = updated_cigars
 
     return targetpileup
+
+
+def update_spliced_read_info(
+    read, 
+    target, 
+    orig_target, 
+    is_gapped_aln, 
+    match_score, 
+    mismatch_penalty, 
+    gap_open_penalty, 
+    gap_extension_penalty
+):
+    ref_seq, lt_len = get_local_reference(orig_target, [read])
+    aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
+    ref_start = orig_target.pos + 1 - lt_len
+    return update_read_info(
+        read, 
+        target, 
+        is_gapped_aln, 
+        gap_open_penalty, 
+        gap_extension_penalty, 
+        aligner, 
+        ref_seq, 
+        ref_start
+    )
+
 
 
 #

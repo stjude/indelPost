@@ -378,13 +378,17 @@ cdef tuple split(object data, str cigarstring, int target_pos, int string_pos, b
     return lt, rt
 
 
-cpdef tuple get_local_reference(Variant target, list pileup):
+cpdef tuple get_local_reference(Variant target, list pileup, bint unspliced=False):
 
     cdef str span
     cdef tuple ptrn 
 
     chrom, pos, reference = target.chrom, target.pos, target.reference
-    splice_patterns = [read["splice_pattern"] for read in pileup if read["splice_pattern"] != ("", "")]
+    
+    if unspliced:
+        splice_patterns = None
+    else:
+        splice_patterns = [read["splice_pattern"] for read in pileup if read["splice_pattern"] != ("", "")]
    
     ref_len = reference.get_reference_length(chrom)
     

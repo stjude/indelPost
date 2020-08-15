@@ -92,6 +92,7 @@ cdef class Contig:
         ]
         self.gaps.append(str(len(self.target.indel_seq)) + self.target.variant_type)
 
+
     def __qc(self):
 
         lt_n, lt_len = self.lt_consensus_seq.count("N"), len(self.lt_consensus_seq)

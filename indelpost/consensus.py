@@ -3,13 +3,9 @@ import re
 import numpy as np
 from collections import OrderedDict
 
-# from .pileup import read_updater
 from .utilities import most_common, to_flat_list
 
-# from .utilities import *
-
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
-
 
 def make_consensus(target, targetpileup):
 
@@ -68,7 +64,6 @@ def index_bases(
         if target_type == "I":
             current_pos = target_pos + 1
         else:
-            # ref = ref[target_len:]
             current_pos = target_pos + target_len + 1
 
     for c in cigar:
@@ -82,7 +77,7 @@ def index_bases(
                     ref = ref[1:]
                 else:
                     indexedbases[current_pos] = ("", flank[0], qual[0])
-
+                
                 flank = flank[1:]
                 qual = qual[1:]
                 current_pos += 1
@@ -119,12 +114,12 @@ def index_bases(
 
         elif event == "N":
             current_pos += event_len
-
+    
     return indexedbases
 
 
 def consensus_data(indexedbases_list, left):
-
+    
     consensus_index = OrderedDict()
     skip_loci = []
     for locus in locus_list(indexedbases_list, left):
@@ -217,13 +212,6 @@ def get_consensus_base(indexedbases_list, locus, qual_lim=23):
             if not consensus_base in hq_bases:
                 consensus_base = "N"
                 consensus_score = 0.0
-
-            # indels are mutated back to ref -> unlikely
-            # elif len(ref) < len(consensus_base) and ref in hq_bases:
-            #    consensus_score = - consensus_score
-            # elif len(ref) > len(consensus_base) and consensus_base in refs:
-            #    consensus_score = - consensus_score
-
     else:
         if hq_bases:
             consensus_base = most_common(hq_bases)
