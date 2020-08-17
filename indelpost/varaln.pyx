@@ -12,7 +12,7 @@ from .pileup import (
     check_overhangs,
     filter_spurious_overhangs,
 )
-from .equivalence import find_by_equivalence
+from .gappedaln import find_by_normalization
 from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
 from .alleles import hard_phase_nearby_variants
@@ -132,13 +132,14 @@ cdef class VariantAlignment:
                 basequalthresh=self.basequalthresh,
             )
             
-            self.__target, pileup, exptension_penalty_used = find_by_equivalence(
+            self.__target, pileup, exptension_penalty_used = find_by_normalization(
                 self.__target,
                 pileup,
                 self.match_score,
                 self.mismatch_penalty,
                 self.gap_open_penalty,
                 self.gap_extension_penalty,
+                self.basequalthresh,
             )
 
             if self.target != self.__target:
@@ -149,6 +150,7 @@ cdef class VariantAlignment:
                         self.mismatch_penalty,
                         self.gap_open_penalty,
                         self.gap_extension_penalty,
+                        self.basequalthresh,
                         bypass_search=True
                     )
 
@@ -223,6 +225,7 @@ cdef class VariantAlignment:
                         self.mismatch_penalty,
                         self.gap_open_penalty,
                         self.gap_extension_penalty,
+                        self.basequalthresh,
                     )
 
                     contig = Contig(

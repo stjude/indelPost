@@ -47,6 +47,11 @@ extensions = [
         include_dirs=pysam_get_include(),
     ),
 
+    Extension(
+        "indelpost.gappedaln",
+        ["indelpost/gappedaln.pyx"],
+        include_dirs=pysam_get_include(),
+    ),
 ]
 
 

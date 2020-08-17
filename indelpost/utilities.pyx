@@ -312,7 +312,25 @@ def relative_aln_pos(ref_seq, cigar_lst, aln_start, target_pos):
     return ref_seq_pos / len(ref_seq)
 
 
-cdef tuple split(object data, str cigarstring, int target_pos, int string_pos, bint is_for_ref, bint reverse):
+#def split_wrapper(
+#    data, 
+#    cigarstring, 
+#    target_pos, 
+#    string_pos, 
+#    is_for_ref, 
+#    reverse,
+#):
+#    return split(data, cigarstring, target_pos, string_pos, is_for_ref, reverse)
+
+
+cdef tuple split(
+    object data, 
+    str cigarstring, 
+    int target_pos, 
+    int string_pos, 
+    bint is_for_ref, 
+    bint reverse,
+):
     
     cdef list cigar_lst = cigar_ptrn.findall(cigarstring)
     cdef int _size = len(cigar_lst)

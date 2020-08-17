@@ -11,7 +11,7 @@ from .utilities import to_flat_list, get_mapped_subreads, most_common, split_cig
 from indelpost.variant cimport Variant
 
 from .consensus import consensus_refseq
-from .equivalence import find_by_equivalence
+from .gappedaln import find_by_normalization
 from .localn import (
     make_aligner,
     align,
@@ -873,6 +873,7 @@ def update_pileup(
     mismatch_penalty,
     gap_open_penalty,
     gap_extension_penalty,
+    basequalthresh,
     bypass_search=False
 ):
 
@@ -896,11 +897,12 @@ def update_pileup(
     if bypass_search:
         return new_target, pileup
     else:
-        return find_by_equivalence(
+        return find_by_normalization(
             new_target,
             pileup,
             match_score,
             mismatch_penalty,
             gap_open_penalty,
             gap_extension_penalty,
+            basequalthresh,
         )
