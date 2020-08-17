@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 
 import numpy as np
+from difflib import SequenceMatcher
 from collections import OrderedDict, Counter
 
-# from statistics import median
-
-from difflib import SequenceMatcher
-
-# from .localn import make_aligner, align, findall_indels
 from .utilities import *
-
-# from .consensus import is_compatible
-from .localn import findall_mismatches
 from .variant import Variant
+from .localn import findall_mismatches
 
-# @profile
+
 def hard_phase_nearby_variants(
     target,
     contig,
@@ -212,12 +206,6 @@ def locate_mismatch_cluster_peaks(
     indexed_contig, mismatches_to_phase, target, snv_neighborhood
 ):
 
-    # mismatches = [var for var in variants_to_phase if not var.is_indel]
-    # non_target_indels = [var for var in variants_to_phase if var.is_indel]
-
-    # if not mismatches or non_target_indels:
-    #    return False
-
     lt_peak, lt_peak_pos = calc_peak(
         indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=True
     )
@@ -262,17 +250,12 @@ def calc_peak(indexed_contig, mismatches, target, snv_neighborhood, left):
         return score, peak_locus
 
     indel_len = len(target.indel_seq)
-    # peak = score
     for i, locus in enumerate(loci):
 
         if locus in snv_loci:
             score += gain
         else:
             score += loss(i, indel_len, snv_neighborhood)
-
-        # if score > peak:
-        #    peak = score
-        #    peak_locus = locus
 
     return score, peak_locus
 
@@ -311,7 +294,6 @@ def is_tight_cluster(mismatches, target, snv_neighborhood):
     return False
 
 
-# @profile
 def variants_in_non_target_pileup(pileup, target):
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)
@@ -466,17 +448,7 @@ def trim_common(indexed_contig, commons, max_common_str_len, left):
                 deletable_commons.append(end)
             else:
                 deletable_commons.append(start)
-
-        # if len(event[0]) != len(event[1]):
-        #    break
-        # else:
-        #    sub_str_len = end - start
-        #    if sub_str_len >= max_common_str_len:
-        #        if left:
-        #            deletable_commons.append(end)
-        #        else:
-        #            deletable_commons.append(start)
-
+    
     if deletable_commons:
         loci = [item[0] for item in list(indexed_contig.items())]
         if left:

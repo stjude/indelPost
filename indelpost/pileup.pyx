@@ -647,55 +647,6 @@ def retarget(
             return None
 
 
-def spliced_reference(target, pileup):
-    pos = target.pos
-    central = [
-        read
-        for read in pileup
-        if read["covering_subread"]
-        and max(read["covering_subread"][0], read["aln_start"]) + 5
-        < pos
-        < min(read["covering_subread"][1], read["aln_end"]) - 5
-    ]
-
-    central = random.sample(central, 30) if len(central) > 30 else central
-
-    lt_refs, rt_refs = [], []
-    for read in central:
-        lt_ref, rt_ref = split(
-            read["ref_seq"],
-            read["cigar_string"],
-            target.pos,
-            read["aln_start"],
-            is_for_ref=True,
-            reverse=False,
-        )
-
-        lt_refs.append(lt_ref)
-        rt_refs.append(rt_ref)
-
-    if lt_refs:
-        lt_consensus, lt_rates = consensus_refseq(lt_refs, left=True)
-        res = [i for i, rate in enumerate(lt_rates) if rate < 1]
-        if res:
-            i = max(res)
-            lt_consensus = lt_consensus[i + 1 :]
-    else:
-        lt_consensus = ""
-
-    if rt_refs:
-        rt_consensus, rt_rates = consensus_refseq(rt_refs)
-        res = [i for i, rate in enumerate(rt_rates) if rate < 1]
-
-        if res:
-            i = min(res)
-            rt_consensus = rt_consensus[:i]
-    else:
-        rt_consensus = ""
-
-    return lt_consensus, rt_consensus
-
-
 def update_read_info(
     read,
     candidate,

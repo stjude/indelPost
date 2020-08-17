@@ -8,7 +8,6 @@ from functools import partial
 from .pileup import (
     update_pileup,
     retarget,
-    spliced_reference,
     update_read_info,
     check_overhangs,
     filter_spurious_overhangs,
