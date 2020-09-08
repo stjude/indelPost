@@ -15,6 +15,7 @@ def hard_phase_nearby_variants(
     pileup,
     mapq_thresh,
     low_qual_frac_thresh,
+    basequalthresh,
     snv_neighborhood,
     indel_neighborhood,
     indel_repeat_thresh,
@@ -52,7 +53,7 @@ def hard_phase_nearby_variants(
         return None
     else:
         variants_in_non_targets, mut_frac = variants_in_non_target_pileup(
-            pileup, target
+            pileup, target, basequalthresh
         )
         if mut_frac > 0.01:
             return None
@@ -296,17 +297,12 @@ def is_tight_cluster(mismatches, target, snv_neighborhood):
     return False
 
 
-def variants_in_non_target_pileup(pileup, target, for_neg=False):
+def variants_in_non_target_pileup(pileup, target, basequalthresh):
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)
         for read in pileup
         if not read["is_target" ]
     ]
-    
-##########Delete later
-    if for_neg and not nontarget_pileup:
-        return None
-#############################
             
     if not nontarget_pileup:
         return [], 0.0
@@ -326,17 +322,8 @@ def variants_in_non_target_pileup(pileup, target, for_neg=False):
     mismatches = [
         Variant(target.chrom, v[0], v[1], v[2], target.reference)
         for read in nontarget_pileup
-        for v in read["mismatches"]
+        for v in read["mismatches"] if v[3] > basequalthresh
     ]
-
-    
-##### Delete later
-    mismatches_2 = [
-        Variant(target.chrom, v[0], v[1], v[2], target.reference)
-        for read in nontarget_pileup
-        for v in read["mismatches"]
-    ]
-##############################################################
 
     nontarget_pileup_vol = sum(
         max(0, len(read["ref_seq"]) - 20) for read in nontarget_pileup
@@ -350,21 +337,6 @@ def variants_in_non_target_pileup(pileup, target, for_neg=False):
     
     mutation_frac = (len(mismatches) + len(indels)) / nontarget_pileup_vol
 
-####### Delete later
-    if for_neg:
-        if mismatches_2:
-            min_dist = min(abs(var.pos - target.pos) for var in mismatches_2) 
-        else:
-            return None
-
-        for var, cnt in Counter(mismatches_2).items():
-            nontarget_pileup = [i for i in pileup if i["is_covering"] and not i["is_target"]]
-            if nontarget_pileup and cnt /  len(nontarget_pileup) > 0.3 and abs(var.pos - target.pos) == min_dist and abs(var.pos - target.pos) < 4:
-                return var
-        
-        return None
-###############################################
-                 
     return set(indels + mismatches), mutation_frac
 
 

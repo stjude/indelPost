@@ -11,7 +11,16 @@ from indelpost.utilities cimport split
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
-def find_by_smith_waterman_realn(target_indel, contig, pileup, match_score, mismatch_penalty, gap_open_penalty, gap_extension_penalty, mapq_lim=1):
+def find_by_smith_waterman_realn(
+    target_indel, 
+    contig, 
+    pileup, 
+    match_score, 
+    mismatch_penalty, 
+    gap_open_penalty, 
+    gap_extension_penalty, 
+    mapq_lim=1
+):
     """Annotate if reads contain target indel
 
     Args:

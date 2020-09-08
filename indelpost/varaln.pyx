@@ -16,9 +16,7 @@ from .gappedaln import find_by_normalization
 from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
 
-#from .alleles import hard_phase_nearby_variants
-from .alleles import variants_in_non_target_pileup, hard_phase_nearby_variants
-#########################
+from .alleles import hard_phase_nearby_variants
 
 from .utilities import get_local_reference, relative_aln_pos
 
@@ -365,6 +363,7 @@ cdef class VariantAlignment:
             self.__pileup,
             self.mapqthresh,
             self.low_qual_frac_thresh,
+            self.basequalthresh,
             snv_neigborhood,
             indel_nearby,
             indel_repeat_thresh,
@@ -372,8 +371,6 @@ cdef class VariantAlignment:
             dbsnp,
         )
 
-    def non_tar(self):
-        return variants_in_non_target_pileup(self.__pileup, self.__target, for_neg=True)        
 
 def is_quality_read(read, pos, qualitywindow, qualitythresh):
 
