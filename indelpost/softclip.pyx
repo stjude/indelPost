@@ -146,6 +146,7 @@ def is_target_by_sftclp_split(read, pos, indel_type, indel_seq, contig, slided=F
 
 
 def split_softclipped_read(read, pos, indel_type, indel_len):
+    
     cigar_string = read["cigar_string"]
     reverse = True if read["softclip_pattern"] == "leading" else False
     string_pos = read["read_end"] if reverse else read["read_start"]

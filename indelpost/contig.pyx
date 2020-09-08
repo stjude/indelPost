@@ -46,19 +46,33 @@ cdef class Contig:
 
     def __make_contig(self):
         lt_consensus, rt_consensus = make_consensus(self.target, self.targetpileup)
-        
+         
         self.__index_by_genome_coord(lt_consensus[0], rt_consensus[0])
-
+        
+        self.lt_reference_seq = ""
+        self.lt_consensus_seq = ""
+        self.lt_consensus_scores = []
+        self.indel_seq = ""
+        self.rt_reference_seq = ""
+        self.rt_consensus_seq = ""
+        self.rt_consensus_scores = []
+        
+        for k, v in self.contig_dict.items():
+            if k < self.target.pos:
+                self.lt_reference_seq += v[0]        
+                self.lt_consensus_seq += v[1]
+                self.lt_consensus_scores.extend([v[2]] * len(v[1]))
+            elif k == self.target.pos:
+                self.lt_reference_seq += v[0][0]
+                self.lt_consensus_seq += v[1][0]
+                self.lt_consensus_scores.append(v[2])
+                self.indel_seq = self.target.indel_seq
+            elif k > self.target.pos:
+                self.rt_reference_seq += v[0]
+                self.rt_consensus_seq += v[1]
+                self.rt_consensus_scores.extend([v[2]] * len(v[1]))
+        
         self.start = lt_consensus[1]
-        self.lt_reference_seq = lt_consensus[2]
-        self.lt_consensus_seq = lt_consensus[3]
-        self.lt_consensus_scores = lt_consensus[4]
-
-        self.indel_seq = self.target.indel_seq
-
-        self.rt_reference_seq = rt_consensus[2]
-        self.rt_consensus_seq = rt_consensus[3]
-        self.rt_consensus_scores = rt_consensus[4]
         self.end = rt_consensus[1]
 
         self.__profile_non_target_variants()
@@ -70,11 +84,11 @@ cdef class Contig:
         self.lt_genomic_index = lt_index
         self.rt_genomic_index = rt_index
 
-        tar = {self.target.pos: (self.target.ref, self.target.alt, 1.0)}
+        #tar = {self.target.pos: (self.target.ref, self.target.alt, 1.0, len(self.targetpileup))}
 
-        genome_indexed_contig = rt_index
-        genome_indexed_contig.update(lt_index)
-        genome_indexed_contig.update(tar)
+        genome_indexed_contig = lt_index
+        genome_indexed_contig.update(rt_index)
+        #genome_indexed_contig.update(tar)
         self.contig_dict = OrderedDict(sorted(genome_indexed_contig.items()))
 
 

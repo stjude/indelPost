@@ -3,7 +3,6 @@
 
 from .utilities import *
 from pysam.libcfaidx cimport FastaFile
-#from pysam.libcbcf cimport VariantRecord, VariantFile
 from pysam.libcbcf cimport VariantFile
 
 cdef class Variant:
@@ -170,11 +169,14 @@ cdef class Variant:
     def __dealloc__(self):
         pass
 
+
     @property
     def is_leftaligned(self):
         """returns True if left-aligned
         """
         if self.ref[-1].upper() != self.alt[-1].upper():
+            return True
+        elif "N" in self.ref.upper() or "N" in self.alt.upper():
             return True
 
     
@@ -259,7 +261,7 @@ cdef class Variant:
         return res
 
     
-    def query_vcf(self, VariantFile vcf, matchby="normalization", window=50, as_dict=True):
+    def query_vcf(self, VariantFile vcf, matchby="normalization", window=50, indel_only=True, as_dict=True):
         """finds VCF records matching this :class:`~indelpost.Variant` object.
 
         Parameters
@@ -270,9 +272,8 @@ cdef class Variant:
             `pysam.VariantFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.VariantFile>`__ object.
 
         matchby : string
-            "normalization"
-            "locus"
-            "exact"
+            "normalization" (default) matches by normalizing VCF records. "locus" matches by the normalized genomic locus.  
+            "exact" finds the exact matche without normalization. 
             
         window : integer
             VCF records  
@@ -289,23 +290,21 @@ cdef class Variant:
         
         chrom = self.__format_chrom_name(self.chrom, vcf=vcf)
         
-        try:
-            records = to_flat_list(
-                [
-                    to_flat_vcf_records(rec)
-                    for rec in vcf.fetch(chrom, leftaligned_pos - 1, leftaligned_pos - 1 + window)
-                ]
-            )
-        except:
-            return []
-
+        records = to_flat_list(
+            [
+                to_flat_vcf_records(rec)
+                for rec in vcf.fetch(chrom, leftaligned_pos - 1, leftaligned_pos - 1 + window)
+            ]
+        )
+        
         hits = [
                 record.orig
                 for record in records
                 if match_indels(
                     Variant(self.chrom, record.pos, record.ref, record.alt, self.reference), 
                     self, 
-                    matchby
+                    matchby,
+                    indel_only,
                 )
         ]
         

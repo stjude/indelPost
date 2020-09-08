@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+import numpy as np
 from ssw import SSW
 
 from .consensus import is_compatible
@@ -36,6 +37,7 @@ def find_by_smith_waterman_realn(target_indel, contig, pileup, match_score, mism
     pileup = [
         is_target_by_ssw(
             read, 
+            target_indel,
             contig, 
             mut_ref_lt,
             mut_ref_mid,
@@ -70,7 +72,7 @@ def findall_mismatches(read, end_trim=0):
     for subread in mapped_subpreads:
         start, end = subread[0], subread[1]
         span = end - start + 1
-
+        
         # trim clipped segments
         cigarstring = read["cigar_string"]
         if "S" in cigarstring:
@@ -86,7 +88,7 @@ def findall_mismatches(read, end_trim=0):
             if "S" in cigarlst[-1]:
                 cigarlst = cigarlst[:-1]
                 read_seq = read_seq[:-read["end_offset"]]
-                quals = quals[:-read["start_offset"]]
+                quals = quals[:-read["end_offset"]]
 
             cigarstring = "".join(cigarlst)
         else:
@@ -118,17 +120,17 @@ def findall_mismatches(read, end_trim=0):
             reverse=False,
         )
         
-        mapped_seq = rt_seq[:span]
-        mapped_qual = rt_qual[:span]
-        mapped_ref = rt_ref[:span]
+        mapped_seq = lt_seq[-1] + rt_seq[: span-1]
+        mapped_qual = [lt_qual[-1]] + list(rt_qual[: span-1])
+        mapped_ref = lt_ref[-1] + rt_ref[: span-1]
        
-        pos = start + 1 #pos for first elem of the rt side
+        pos = start #pos for first elem of the rt side
         for r, a, q in zip(mapped_ref, mapped_seq, mapped_qual):
             if r != a:
                 if aln_start + end_trim < pos < aln_end - end_trim:
                     mismatches.append((pos, r.upper(), a, q))
+            
             pos += 1
-
     
     read["mismatches"] = mismatches
     
@@ -170,7 +172,8 @@ def is_worth_realn(read, qual_lim=23):
 
 
 def is_target_by_ssw(
-    read, 
+    read,
+    target_indel, 
     contig,
     mut_ref_lt,
     mut_ref_mid,
@@ -199,13 +202,15 @@ def is_target_by_ssw(
     mut_aln = align(mut_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     
-    mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
-    if len(mut_cigar_list) == 1:
-        mapped_len = int(mut_cigar_list[0][:-1])
-        if mut_aln.reference_start < len(mut_ref_lt) < mapped_len:
-            if mut_aln.optimal_score >= match_score * mapped_len - (allow_mismatches * mismatch_penalty): 
-                read["is_target"] = True
-                return read
+    if not target_indel.count_repeats():
+        mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
+        if len(mut_cigar_list) == 1:
+            mapped_len = int(mut_cigar_list[0][:-1])
+            if mut_aln.reference_start < len(mut_ref_lt) < mapped_len:
+                allow_mismatches = 0 if len(target_indel.indel_seq) < 4 else allow_mismatches
+                if mut_aln.optimal_score >= match_score * mapped_len - (allow_mismatches * mismatch_penalty): 
+                    read["is_target"] = True
+                    return read
      
     if not indel_type in ref_aln.CIGAR:
         return read

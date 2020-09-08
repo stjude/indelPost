@@ -15,7 +15,11 @@ from .pileup import (
 from .gappedaln import find_by_normalization
 from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
-from .alleles import hard_phase_nearby_variants
+
+#from .alleles import hard_phase_nearby_variants
+from .alleles import variants_in_non_target_pileup, hard_phase_nearby_variants
+#########################
+
 from .utilities import get_local_reference, relative_aln_pos
 
 from indelpost.pileup cimport make_pileup
@@ -315,7 +319,7 @@ cdef class VariantAlignment:
             for read in reads
             if count_as_non_target(read, pos, margin) and read["is_reverse"]
         ]
-
+        
         fw_target = set(fw_target)
         rw_target = set(rv_target)
         fwrv_target = fw_target | rw_target
@@ -368,13 +372,14 @@ cdef class VariantAlignment:
             dbsnp,
         )
 
+    def non_tar(self):
+        return variants_in_non_target_pileup(self.__pileup, self.__target, for_neg=True)        
 
 def is_quality_read(read, pos, qualitywindow, qualitythresh):
 
     try:
         lt_qual, rt_qual = read["lt_qual"], read["rt_qual"]
     except:
-        # return True
         lt_qual, rt_qual = split(
             read["read_qual"],
             read["cigar_string"],
@@ -384,7 +389,6 @@ def is_quality_read(read, pos, qualitywindow, qualitythresh):
             reverse=False,
         )
 
-    # return True
     if lt_qual and rt_qual:
         lt_median = np.median(lt_qual[-min(len(lt_qual), qualitywindow) :])
         rt_median = np.median(rt_qual[: min(len(rt_qual), qualitywindow)])
@@ -445,7 +449,7 @@ cdef list preprocess_for_contig_construction(
         targetpileup = sorted(targetpileup, key=partial(centrality, target_pos=target.pos))
         
         if len(targetpileup) > 2:
-            targetpileup = targetpileup[: min(20, int(len(targetpileup) / 1.5 ))]
+            targetpileup = targetpileup[: min(20, int(len(targetpileup) / 1.25 ))]
 
         unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, unspliced=True) 
         unspl_aligner = make_aligner(unspl_ref_seq, match_score, mismatch_penalty)
@@ -511,177 +515,3 @@ def update_spliced_read_info(
         ref_start
     )
 
-
-
-#
-#
-# def suggest_del_seq(target_deletion, template, pileup):
-#     chrom, pos, del_orig, genome = target_deletion.chrom, target_deletion.pos, target_deletion.indel_seq, target_deletion.genome
-#
-#
-#     lt_ref, rt_ref = template["lt_ref"], template["rt_ref"]
-#     lt_flank, rt_flank = template["lt_flank"], template["rt_flank"]
-#
-#     lt_shift, rt_shift = 0, 0
-#     if has_mismatches(lt_ref):
-#         lt_shift = pos_shift_by_exact_match(chrom, pos, lt_flank, genome, is_left=True)
-#
-#     if has_mismatches(rt_ref):
-#         rt_shift = pos_shift_by_exact_match(chrom, pos, rt_flank, genome)
-#
-#     if lt_shift or rt_shift:
-#         new_ref = genome.fetch(chrom, pos - 1 + lt_shift, pos + len(del_orig) + rt_shift)
-#         new_alt = genome.fetch(chrom, pos - 1 + lt_shift, pos + lt_shift)
-#         return pos + lt_shift, new_ref, new_alt
-#     else:
-#         return None
-#
-#
-#
-#
-#
-#
-#
-# def has_mismatches(flank_ref_seq):
-#     res = False if flank_ref_seq.isupper() else True
-#     return res
-#
-#
-#
-#
-#
-#
-# def infer_indel_sequence(target_indel, pileup, second_pileup=None):
-#     if skip_denovo_repeat_check(target_indel, pileup):
-#         return target_indel.indel_seq
-#
-#     pos = target_indel.pos
-#     del_seq = target_indel.indel_seq
-#     denovo_repeats = [
-#         check_for_denovo_repeat(d, pos, del_seq)
-#         for d in pileup
-#         if check_for_denovo_repeat(d, pos, del_seq)
-#     ]
-#     if denovo_repeats:
-#         return most_common(denovo_repeats)
-#     else:
-#         return del_seq
-#
-#
-# def skip_denovo_repeat_check(target_indel, pileup):
-#     """Check if targe indel is a non-repetitive deletion
-#        for polymorphism-induced de novo repeat checking
-#     """
-#     if target_indel.variant_type == "I":
-#         return True
-#
-#     targets = [d for d in pileup if d["is_target"]]
-#
-#     if not targets:
-#         return True
-#
-#     del_seq = target_indel.indel_seq
-#     del_len = len(del_seq)
-#     is_in_repeats = [
-#         (del_seq == d["rt_flank"][:del_len]) or (del_seq == d["lt_flank"][-del_len:])
-#         for d in targets
-#     ]
-#
-#     if most_common(is_in_repeats):
-#         return True
-#
-#     return False
-#
-#
-# def check_for_denovo_repeat(read_dict, pos, del_seq):
-#     if read_dict["is_target"] or not read_dict["is_covering"]:
-#         return None
-#
-#     # do not infer from reads with lower MAPQ
-#     if read_dict["mapq"] < 20:
-#         return None
-#
-#     read_seq, read_pos, cigar_list = (
-#         read_dict["read"].query_sequence,
-#         read_dict["read_start"],
-#         read_dict["cigar_list"],
-#     )
-#
-#     read_idx = 0
-#     prev_event = ""
-#     for token in cigar_list:
-#         event, event_len = token[-1], int(token[:-1])
-#
-#         if read_pos < pos:
-#             read_pos = read_pos if event == "I" else (read_pos + event_len)
-#         else:
-#             break
-#
-#         prev_event = event
-#         read_idx = read_idx if event == "D" else read_idx + event_len
-#
-#     # do not infer from softclipped bases
-#     if prev_event == "S" or event == "S":
-#         return None
-#
-#     # do not infer from read ends
-#     if read_idx / len(read_seq) < 0.15 or read_idx / len(read_seq) > 0.85:
-#         return None
-#
-#     diff = pos - read_pos
-#
-#     indel_len = len(del_seq)
-#     quals = read_dict["read"].query_qualities
-#     lt_flank, mid_seq, mid_quals, rt_flank = (
-#         read_seq[: read_idx + diff],
-#         read_seq[read_idx + diff : read_idx + diff + indel_len],
-#         quals[read_idx + diff : read_idx + diff + indel_len],
-#         read_seq[read_idx + diff + indel_len :],
-#     )
-#
-#     # if repetitive repalace
-#     if lt_flank and mid_seq and rt_flank:
-#         if np.median(mid_quals) > 24 and (
-#             mid_seq == lt_flank[-indel_len:] or mid_seq == rt_flank[:indel_len]
-#         ):
-#             return mid_seq
-#     else:
-#         return None
-#
-#
-# def pos_shift_by_exact_match(chrom, pos, flank_seq, genome, is_left=False):
-#     if is_left:
-#         ref_seq = genome.fetch(chrom, pos - 50, pos)
-#         ref_seq = ref_seq[::-1]
-#         flank_seq = flank_seq[::-1].upper()
-#     else:
-#         ref_seq = genome.fetch(chrom, pos, pos - 50)
-#
-#     res = ref_seq.find(flank_seq)
-#
-#     if res == -1:
-#         return 0
-#
-#     pos_shift = - res if is_left else res
-#
-#     return pos_shift
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#

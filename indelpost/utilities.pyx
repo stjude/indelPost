@@ -65,11 +65,11 @@ cpdef dict to_dict(object record):
         return d
 
 
-cpdef bint match_indels(Variant query, Variant subject, str matchby):
-    if matchby != "equivalence" and not query.is_indel:
+cpdef bint match_indels(Variant query, Variant subject, str matchby, bint indel_only):
+    if matchby != "normalization" and indel_only and not query.is_indel:
         return False
 
-    if matchby == "equivalence":
+    if matchby == "normalization":
         return query == subject
 
     elif matchby == "locus":
@@ -285,10 +285,6 @@ cpdef tuple split_cigar(str cigarstring, int target_pos, int start):
             lt_lst.append(cigar)
 
 
-#ctypedef fused str_or_list:
-#    str
-#    list 
-
 def relative_aln_pos(ref_seq, cigar_lst, aln_start, target_pos):
     
     current_pos = aln_start - 1
@@ -310,17 +306,6 @@ def relative_aln_pos(ref_seq, cigar_lst, aln_start, target_pos):
     ref_seq_pos += (target_pos - current_pos)   
      
     return ref_seq_pos / len(ref_seq)
-
-
-#def split_wrapper(
-#    data, 
-#    cigarstring, 
-#    target_pos, 
-#    string_pos, 
-#    is_for_ref, 
-#    reverse,
-#):
-#    return split(data, cigarstring, target_pos, string_pos, is_for_ref, reverse)
 
 
 cdef tuple split(

@@ -7,6 +7,7 @@ from .utilities import most_common, to_flat_list
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
+
 def make_consensus(target, targetpileup):
 
     target_pos, target_type, target_len = (
@@ -25,7 +26,6 @@ def make_consensus(target, targetpileup):
             read["lt_flank"],
             read["lt_ref"],
             read["lt_qual"],
-            left=True,
         )
         for read in targetpileup
     ]
@@ -40,6 +40,12 @@ def make_consensus(target, targetpileup):
             read["rt_flank"],
             read["rt_ref"],
             read["rt_qual"],
+            left_padding=(
+                read["lt_ref"][-1],
+                read["lt_flank"][-1],
+                read["lt_qual"][-1],
+                target.indel_seq,
+            ),
             left=False,
         )
         for read in targetpileup
@@ -52,78 +58,179 @@ def make_consensus(target, targetpileup):
 
 
 def index_bases(
-    read_pos, target_pos, target_type, target_len, cigar, flank, ref, qual, left
+    read_pos,
+    target_pos,
+    target_type,
+    target_len,
+    cigar,
+    flank,
+    ref,
+    qual,
+    left_padding=None,
+    left=True,
 ):
     indexedbases = {}
+
+    cigar = merge_consecutive_gaps(cigar)
 
     if left:
         current_pos = read_pos
     else:
-        if "I" in cigar[0] or "D" in cigar[0]:
-            cigar = cigar[1:]
-        if target_type == "I":
-            current_pos = target_pos + 1
+        current_pos = target_pos
+        ref_padding, flank_padding, qual_padding, target_seq = (
+            left_padding[0],
+            left_padding[1],
+            left_padding[2],
+            left_padding[3],
+        )
+
+        first_cigar = cigar_ptrn.findall(cigar[0])
+
+        if len(first_cigar) == 1:
+            if target_type == "I":
+                indexedbases[current_pos] = (
+                    ref_padding,
+                    flank_padding + target_seq,
+                    qual_padding,
+                )
+                current_pos += 1
+            else:
+                indexedbases[current_pos] = (
+                    ref_padding + target_seq,
+                    flank_padding,
+                    qual_padding,
+                )
+                current_pos += target_len + 1
         else:
-            current_pos = target_pos + target_len + 1
+            del_len = sum(int(c[:-1]) for c in first_cigar if c[-1] == "D")
+            indexedbases[current_pos] = (
+                ref_padding + ref[:del_len],
+                flank_padding + target_seq,
+                qual_padding,
+            )
+            current_pos += del_len + 1
+
+        cigar = cigar[1:]
+
+        # if "I" in cigar[0] or "D" in cigar[0]:
+        #    cigar = cigar[1:]
+        # if target_type == "I":
+        #    current_pos = target_pos + 1
+        # else:
+        #    current_pos = target_pos + target_len + 1
 
     for c in cigar:
 
-        event, event_len = c[-1], int(c[:-1])
+        if "I" in c and "D" in c:
+            tmp = cigar_ptrn.findall(c)
+            ins_len = sum(int(i[:-1]) for i in tmp if i[-1] == "I")
+            del_len = sum(int(i[:-1]) for i in tmp if i[-1] == "D")
 
-        if event == "M" or event == "S":
-            for i in range(event_len):
-                if ref and event == "M":
-                    indexedbases[current_pos] = (ref[0], flank[0], qual[0])
-                    ref = ref[1:]
-                else:
-                    indexedbases[current_pos] = ("", flank[0], qual[0])
-                
-                flank = flank[1:]
-                qual = qual[1:]
-                current_pos += 1
-
-        elif event == "I":
             padding_ref, padding_qual = (
                 indexedbases[current_pos - 1][0],
                 indexedbases[current_pos - 1][2],
             )
+
             ins_seq, flank, ins_qual, qual = (
-                flank[:event_len],
-                flank[event_len:],
-                qual[:event_len],
-                qual[event_len:],
+                flank[:ins_len],
+                flank[ins_len:],
+                qual[:ins_len],
+                qual[ins_len:],
             )
+
+            del_seq, ref = ref[:del_len], ref[del_len:]
+
             indexedbases[current_pos - 1] = (
-                padding_ref,
+                padding_ref + del_seq,
                 padding_ref + ins_seq,
                 np.median([padding_qual] + list(ins_qual)),
             )
-        elif event == "D":
-            padding_ref, padding_qual = (
-                indexedbases[current_pos - 1][0],
-                indexedbases[current_pos - 1][2],
-            )
-            del_seq, ref = ref[:event_len], ref[event_len:]
-            indexedbases[current_pos - 1] = (
-                padding_ref + del_seq,
-                padding_ref,
-                padding_qual,
-            )
 
-            current_pos += event_len
+            current_pos += del_len
 
-        elif event == "N":
-            current_pos += event_len
-    
+        else:
+            event, event_len = c[-1], int(c[:-1])
+
+            if event == "M" or event == "S":
+                for i in range(event_len):
+                    if ref and event == "M":
+                        indexedbases[current_pos] = (ref[0], flank[0], qual[0])
+                        ref = ref[1:]
+                    else:
+                        indexedbases[current_pos] = ("", flank[0], qual[0])
+
+                    flank = flank[1:]
+                    qual = qual[1:]
+                    current_pos += 1
+
+            elif event == "I":
+                padding_ref, padding_qual = (
+                    indexedbases[current_pos - 1][0],
+                    indexedbases[current_pos - 1][2],
+                )
+                ins_seq, flank, ins_qual, qual = (
+                    flank[:event_len],
+                    flank[event_len:],
+                    qual[:event_len],
+                    qual[event_len:],
+                )
+                indexedbases[current_pos - 1] = (
+                    padding_ref,
+                    padding_ref + ins_seq,
+                    np.median([padding_qual] + list(ins_qual)),
+                )
+
+            elif event == "D":
+                padding_ref, padding_qual = (
+                    indexedbases[current_pos - 1][0],
+                    indexedbases[current_pos - 1][2],
+                )
+                del_seq, ref = ref[:event_len], ref[event_len:]
+                indexedbases[current_pos - 1] = (
+                    padding_ref + del_seq,
+                    padding_ref,
+                    padding_qual,
+                )
+
+                current_pos += event_len
+
+            elif event == "N":
+                current_pos += event_len
+
     return indexedbases
 
 
+def merge_consecutive_gaps(cigar_lst):
+
+    merged_lst = []
+    while cigar_lst:
+        c = cigar_lst[0]
+        cigar_lst = cigar_lst[1:]
+
+        if "I" in c or "D" in c:
+            i = 0
+            is_gap = True
+            while i < len(cigar_lst) and is_gap:
+                tmp = cigar_lst[i]
+                is_gap = True if "I" in tmp or "D" in tmp else False
+                i += 1
+
+            if i - 1:
+                c += "".join(cigar_lst[: i - 1])
+                cigar_lst = cigar_lst[i - 1 :]
+
+        merged_lst.append(c)
+
+    return merged_lst
+
+
 def consensus_data(indexedbases_list, left):
-    
+
     consensus_index = OrderedDict()
+
     skip_loci = []
     for locus in locus_list(indexedbases_list, left):
-        ref, consensus_base, consensus_score = get_consensus_base(
+        ref, consensus_base, consensus_score, coverage = get_consensus_base(
             indexedbases_list, locus
         )
 
@@ -131,7 +238,7 @@ def consensus_data(indexedbases_list, left):
             del_len = len(ref) - len(consensus_base)
             skip_loci += [locus + i for i in range(1, del_len + 1)]
 
-        consensus_index[locus] = (ref, consensus_base, consensus_score)
+        consensus_index[locus] = (ref, consensus_base, consensus_score, coverage)
 
     for locus in skip_loci:
         if locus in consensus_index:
@@ -139,12 +246,18 @@ def consensus_data(indexedbases_list, left):
 
     conseq, refseq = "", ""
     scores = []
+    coverages = []
     prev_ref = ""
     prev_locus = -1
     ref_end = -1
     for locus, data in consensus_index.items():
 
-        ref, consensus_base, consensus_score = data[0], data[1], data[2]
+        ref, consensus_base, consensus_score, coverage = (
+            data[0],
+            data[1],
+            data[2],
+            data[3],
+        )
 
         if left and len(ref) != len(consensus_base):
             ref = ref[::-1]
@@ -153,6 +266,7 @@ def consensus_data(indexedbases_list, left):
         refseq += ref
         conseq += consensus_base
         scores += [consensus_score] * len(consensus_base)
+        coverages += [coverage] * len(consensus_base)
 
         if prev_ref and not ref:
             ref_end = prev_locus
@@ -164,8 +278,9 @@ def consensus_data(indexedbases_list, left):
         conseq = conseq[::-1]
         refseq = refseq[::-1]
         scores = scores[::-1]
+        coverages = coverages[::-1]
 
-    return consensus_index, ref_end, refseq, conseq, scores
+    return consensus_index, ref_end, refseq, conseq, scores, coverages
 
 
 def locus_list(dict_list, left):
@@ -176,6 +291,7 @@ def locus_list(dict_list, left):
 
 
 def get_consensus_base(indexedbases_list, locus, qual_lim=23):
+
     refs = [
         indexedbases[locus][0].upper()
         for indexedbases in indexedbases_list
@@ -191,10 +307,10 @@ def get_consensus_base(indexedbases_list, locus, qual_lim=23):
         for indexedbases in indexedbases_list
         if indexedbases.get(locus, False)
     ]
-   
+
     if not bases:
         ref = most_common(refs) if refs else ""
-        return ref, "N", 0.0
+        return ref, "N", 0.0, 0
 
     hq_bases = [base for base, qual in zip(bases, quals) if qual > qual_lim]
 
@@ -220,7 +336,7 @@ def get_consensus_base(indexedbases_list, locus, qual_lim=23):
             consensus_base = "N"
             consensus_score = 0.0
 
-    return ref, consensus_base, consensus_score
+    return ref, consensus_base, consensus_score, len(pairs)
 
 
 def consensus_refseq(refseq_lst, left=False):

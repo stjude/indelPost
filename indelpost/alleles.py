@@ -57,7 +57,8 @@ def hard_phase_nearby_variants(
         if mut_frac > 0.01:
             return None
     
-    lt_loci, rt_loci, tmp = [], [], variants_to_phase
+    
+    lt_loci, rt_loci, tmp = [], [], variants_to_phase.copy()
     for var in tmp:
         if is_deletable(var, variants_in_non_targets, indel_repeat_thresh, dbsnp):
             if var.pos < target.pos:
@@ -143,7 +144,7 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
 
     # filter low qual loci
     for k, v in genome_indexed_contig.items():
-        ref, alt, score = v[0], v[1], v[2]
+        ref, alt, score, cov = v[0], v[1], v[2], v[3]
         if not ref or not alt:
             if k < target_pos:
                 lt_loci.append(k)
@@ -156,7 +157,7 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
             elif k > target_pos:
                 rt_loci.append(k)
 
-        elif score < score_thresh(ref, alt):
+        elif score < score_thresh(ref, alt, cov):
             if k < target_pos:
                 lt_loci.append(k)
             elif k > target_pos:
@@ -188,12 +189,14 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
     return tmp, variants_list
 
 
-def score_thresh(ref, alt):
+def score_thresh(ref, alt, cov):
     if len(ref) == len(alt) == 1:
-        if ref == alt:
-            return 0.7
+        if cov > 4:
+            return 0.7 if ref == alt else 0.79
+        elif 2 < cov <= 4:
+            return 0.65 
         else:
-            return 0.8
+            return 1.0
     elif len(ref) > 6:
         return 0.6
     elif len(alt) > 6:
@@ -226,7 +229,6 @@ def locate_mismatch_cluster_peaks(
     else:
         return None
 
-    # return (lt_peak_pos - 1, rt_peak_pos + 1)
     if is_tight_cluster(mismatches_to_phase, target, snv_neighborhood):
         return (lt_peak_pos - 1, rt_peak_pos + 1)
     else:
@@ -294,13 +296,18 @@ def is_tight_cluster(mismatches, target, snv_neighborhood):
     return False
 
 
-def variants_in_non_target_pileup(pileup, target):
+def variants_in_non_target_pileup(pileup, target, for_neg=False):
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)
         for read in pileup
-        if not read["is_target"]
+        if not read["is_target" ]
     ]
     
+##########Delete later
+    if for_neg and not nontarget_pileup:
+        return None
+#############################
+            
     if not nontarget_pileup:
         return [], 0.0
 
@@ -322,18 +329,42 @@ def variants_in_non_target_pileup(pileup, target):
         for v in read["mismatches"]
     ]
 
+    
+##### Delete later
+    mismatches_2 = [
+        Variant(target.chrom, v[0], v[1], v[2], target.reference)
+        for read in nontarget_pileup
+        for v in read["mismatches"]
+    ]
+##############################################################
+
     nontarget_pileup_vol = sum(
         max(0, len(read["ref_seq"]) - 20) for read in nontarget_pileup
-    )
+    ) + 1
 
     mismatches = [
         var
         for var, cnt in Counter(mismatches).items()
         if cnt / len(nontarget_pileup) > 0.05
     ]
-
+    
     mutation_frac = (len(mismatches) + len(indels)) / nontarget_pileup_vol
 
+####### Delete later
+    if for_neg:
+        if mismatches_2:
+            min_dist = min(abs(var.pos - target.pos) for var in mismatches_2) 
+        else:
+            return None
+
+        for var, cnt in Counter(mismatches_2).items():
+            nontarget_pileup = [i for i in pileup if i["is_covering"] and not i["is_target"]]
+            if nontarget_pileup and cnt /  len(nontarget_pileup) > 0.3 and abs(var.pos - target.pos) == min_dist and abs(var.pos - target.pos) < 4:
+                return var
+        
+        return None
+###############################################
+                 
     return set(indels + mismatches), mutation_frac
 
 
@@ -347,7 +378,7 @@ def is_deletable(variant, deletable_variants, indel_repeat_thresh, dbsnp):
             return True
 
     if dbsnp:
-        hits = variant.query_vcf(dbsnp)
+        hits = variant.query_vcf(dbsnp, indel_only=False)
         for hit in hits:
 
             info = hit["INFO"]

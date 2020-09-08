@@ -696,6 +696,7 @@ def update_read_info(
         
         if indels:
             indel = indels[0]
+            
             if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
                 pass
             elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:

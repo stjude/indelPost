@@ -156,7 +156,10 @@ def seek_larger_gapped_aln(
             if rt_read != rt_ref and min(rt_qual) > basequalthresh:
                 with_end_mut = True
 
-    ref_seq, lt_len = get_local_reference(target, [read])
+    if "N" in read["cigar_string"]:
+        ref_seq, lt_len = get_local_reference(target, [read])
+    else:
+        ref_seq, lt_len = get_local_reference(target, [read], unspliced=True)
 
     gap_extension_penalty = (
         0 if abs(center_score) > 0.35 and with_end_mut else gap_extension_penalty
@@ -189,16 +192,8 @@ def seek_larger_gapped_aln(
             alt = candidate["lt_ref"][-1]
             ref = alt + candidate["del_seq"]
 
-        candidate_var = Variant(
+        target = Variant(
             target.chrom, candidate["pos"], ref, alt, target.reference
         )
-
-        if len(target.indel_seq) < len(candidate_var.indel_seq):
-            is_left_short = True if center_score > 0 else False
-
-            if (is_left_short and candidate_var.pos <= target.pos) or (
-                not is_left_short and target.pos <= candidate_var.pos
-            ):
-                target = candidate_var
-
+        
     return target, gap_extension_penalty
