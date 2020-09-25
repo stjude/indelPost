@@ -23,7 +23,7 @@ def hard_phase_nearby_variants(
     dbsnp,
 ):
 
-    if contig.failed or not contig.qc_passed or contig.mapq < mapq_thresh:
+    if contig.failed or contig.mapq < mapq_thresh or contig.low_qual_mapping_rate >= 0.1:
         return None
 
     if (
@@ -34,9 +34,9 @@ def hard_phase_nearby_variants(
 
     if low_qual_fraction(pileup) > low_qual_frac_thresh:
         return None
-
-    pileup_mapq = np.percentile([read["mapq"] for read in pileup], 50)
-    if pileup_mapq < mapq_thresh:
+    
+    pileup_mapq_low_20 = np.percentile([read["mapq"] for read in pileup], 20)
+    if pileup_mapq_low_20 < mapq_thresh:
         return None
 
     variants_to_phase = contig.mismatches + contig.non_target_indels
@@ -55,9 +55,8 @@ def hard_phase_nearby_variants(
         variants_in_non_targets, mut_frac = variants_in_non_target_pileup(
             pileup, target, basequalthresh
         )
-        if mut_frac > 0.01:
+        if mut_frac > 0.05:
             return None
-    
     
     lt_loci, rt_loci, tmp = [], [], variants_to_phase.copy()
     for var in tmp:
@@ -66,7 +65,7 @@ def hard_phase_nearby_variants(
                 lt_loci.append(var.pos)
             elif var.pos > target.pos:
                 rt_loci.append(var.pos)
-
+            
             variants_to_phase.remove(var)
     
     if not variants_to_phase:
@@ -192,16 +191,17 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
 
 def score_thresh(ref, alt, cov):
     if len(ref) == len(alt) == 1:
-        if cov > 4:
-            return 0.7 if ref == alt else 0.79
-        elif 2 < cov <= 4:
-            return 0.65 
+        if ref == alt:
+            return 0.0
         else:
-            return 1.0
-    elif len(ref) > 6:
+            if cov > 4:
+                return 0.7 if ref == alt else 0.79
+            elif 2 < cov <= 4:
+                return 0.65 
+            else:
+                return 1.0
+    elif len(ref) > 6 or len(alt) > 6:
         return 0.6
-    elif len(alt) > 6:
-        return 0.5
     else:
         return 0.67
 
@@ -288,20 +288,20 @@ def is_tight_cluster(mismatches, target, snv_neighborhood):
         var for var in mismatches if target.pos + rt_margin + neigborhood < var.pos
     ]
 
-    if len(lt_near_snvs) > len(lt_far_snvs):
-        return True
+    if len(lt_near_snvs) < len(lt_far_snvs):
+        return False
 
-    if len(rt_near_snvs) > len(rt_far_snvs):
-        return True
+    if len(rt_near_snvs) < len(rt_far_snvs):
+        return False
 
-    return False
+    return True
 
 
 def variants_in_non_target_pileup(pileup, target, basequalthresh):
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)
         for read in pileup
-        if not read["is_target" ]
+        if not read["is_target" ] and read["is_covering"]
     ]
             
     if not nontarget_pileup:
@@ -329,14 +329,14 @@ def variants_in_non_target_pileup(pileup, target, basequalthresh):
         max(0, len(read["ref_seq"]) - 20) for read in nontarget_pileup
     ) + 1
 
+    mutation_frac = (len(mismatches) + len(indels)) / nontarget_pileup_vol
+    
     mismatches = [
         var
         for var, cnt in Counter(mismatches).items()
-        if cnt / len(nontarget_pileup) > 0.05
+        if cnt > 2 and cnt / len(nontarget_pileup) > 0.15
     ]
     
-    mutation_frac = (len(mismatches) + len(indels)) / nontarget_pileup_vol
-
     return set(indels + mismatches), mutation_frac
 
 

@@ -1,9 +1,35 @@
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
-from Cython.Build import cythonize
-from Cython.Distutils import build_ext
 
-from pysam import get_include as pysam_get_include
+
+def pip_install(pkg_name):
+    import subprocess
+
+    subprocess.check_call(
+        ["python", "-m", "pip", "install", pkg_name], stdout=subprocess.DEVNULL
+    )
+
+
+try:
+    from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+except ImportError:
+    pip_install("cython")
+
+    from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+
+try:
+    from pysam import get_include as pysam_get_include
+except ImportError:
+    pip_install("pysam")
+    from pysam import get_include as pysam_get_include
+
+try:
+    import numpy
+except ImportError:
+    pip_install("numpy")
+
 
 extensions = [
     Extension(
@@ -16,44 +42,29 @@ extensions = [
         ["indelpost/utilities.pyx"],
         include_dirs=pysam_get_include(),
     ),
-    
     Extension(
-        "indelpost.pileup",
-        ["indelpost/pileup.pyx"],
-        include_dirs=pysam_get_include(),
+        "indelpost.pileup", ["indelpost/pileup.pyx"], include_dirs=pysam_get_include(),
     ),
-
     Extension(
-        "indelpost.varaln",
-        ["indelpost/varaln.pyx"],
-        include_dirs=pysam_get_include(),
+        "indelpost.varaln", ["indelpost/varaln.pyx"], include_dirs=pysam_get_include(),
     ),
-
     Extension(
-        "indelpost.contig",
-        ["indelpost/contig.pyx"],
-        include_dirs=pysam_get_include(),
+        "indelpost.contig", ["indelpost/contig.pyx"], include_dirs=pysam_get_include(),
     ),
-
     Extension(
         "indelpost.softclip",
         ["indelpost/softclip.pyx"],
         include_dirs=pysam_get_include(),
     ),
-
     Extension(
-        "indelpost.localn",
-        ["indelpost/localn.pyx"],
-        include_dirs=pysam_get_include(),
+        "indelpost.localn", ["indelpost/localn.pyx"], include_dirs=pysam_get_include(),
     ),
-
     Extension(
         "indelpost.gappedaln",
         ["indelpost/gappedaln.pyx"],
         include_dirs=pysam_get_include(),
     ),
 ]
-
 
 
 version = {}
@@ -69,7 +80,7 @@ setup(
     author_email="kohei.hagiwara@stjude.org",
     license="Apache License 2.0",
     packages=find_packages(exclude=["tests"]),
-    cmdclass = {"build_ext": build_ext},
-    ext_modules=cythonize(extensions, compiler_directives={'language_level' : "3"}),
+    cmdclass={"build_ext": build_ext},
+    ext_modules=cythonize(extensions, compiler_directives={"language_level": "3"}),
+    install_requires=["ssw-py"],
 )
-

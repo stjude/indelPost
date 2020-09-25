@@ -134,9 +134,15 @@ cdef class VariantAlignment:
                 basequalthresh=self.basequalthresh,
             )
             
+            for read in pileup:
+                if "H" in read["read"].cigarstring:
+                    print(read)
+            
+            
             self.__target, pileup, exptension_penalty_used = find_by_normalization(
                 self.__target,
                 pileup,
+                self.window,
                 self.match_score,
                 self.mismatch_penalty,
                 self.gap_open_penalty,
@@ -148,6 +154,7 @@ cdef class VariantAlignment:
                     self.__target, pileup = update_pileup(
                         pileup,
                         self.__target,
+                        self.window,
                         self.match_score,
                         self.mismatch_penalty,
                         self.gap_open_penalty,
@@ -162,11 +169,14 @@ cdef class VariantAlignment:
                     self.__target,
                     self.target,
                     pileup,
+                    self.window,
                     self.match_score,
                     self.mismatch_penalty,
                     self.gap_open_penalty,
                     exptension_penalty_used,
                 ),
+                self.basequalthresh,
+                self.mapqthresh,
             )
 
             self.is_spurious_overhang = False
@@ -187,7 +197,7 @@ cdef class VariantAlignment:
                         self.gap_extension_penalty,
                     )
                     if not non_spurious_overhangs:
-                        contig = Contig(self.__target, [])
+                        contig = Contig(self.__target, [], self.basequalthresh, self.mapqthresh)
                         self.is_spurious_overhang = True
                         return pileup, contig
                     else:
@@ -200,7 +210,7 @@ cdef class VariantAlignment:
                             self.retarget_cutoff,
                         )
                         if not res:
-                            contig = Contig(self.__target, [])
+                            contig = Contig(self.__target, [], self.basequalthresh, self.mapqthresh)
                             self.is_spurious_overhang = True
                             return pileup, contig
                 else:
@@ -208,6 +218,7 @@ cdef class VariantAlignment:
                         self.perform_retarget,
                         self.__target,
                         pileup,
+                        self.window,
                         self.mapqthresh,
                         within,
                         self.retarget_cutoff,
@@ -220,27 +231,33 @@ cdef class VariantAlignment:
                 # if retargeted successfully -> make template based on the retarget
                 if res:
                     self.__target, retarget_reads = res[0], res[1]
-                    self.__target, self.__pileup, exptension_penalty_used = update_pileup(
+                    
+                    self.__target, self.__pileup = update_pileup(
                         pileup,
                         self.__target,
+                        self.window,
                         self.match_score,
                         self.mismatch_penalty,
                         self.gap_open_penalty,
                         self.gap_extension_penalty,
                         self.basequalthresh,
+                        bypass_search=True,
                     )
-
+                    
                     contig = Contig(
                         self.__target,
                         preprocess_for_contig_construction(
                             self.__target,
                             self.__target,
                             self.__pileup,
+                            self.window,
                             self.match_score,
                             self.mismatch_penalty,
                             self.gap_open_penalty,
                             exptension_penalty_used,
                         ),
+                        self.basequalthresh,
+                        self.mapqthresh
                     )
 
                     # 2nd-pass using the retarget
@@ -263,6 +280,25 @@ cdef class VariantAlignment:
                 self.gap_open_penalty,
                 self.gap_extension_penalty,
             )
+        
+        
+            contig = Contig(
+                self.__target,
+                preprocess_for_contig_construction(
+                    self.__target,
+                    self.target,
+                    pileup,
+                    self.window,
+                    self.match_score,
+                    self.mismatch_penalty,
+                    self.gap_open_penalty,
+                    self.gap_extension_penalty,
+                ),
+                self.basequalthresh,
+                self.mapqthresh,
+            )
+        
+        
         
         return pileup, contig
 
@@ -413,6 +449,7 @@ cdef list preprocess_for_contig_construction(
     Variant target,
     Variant orig_target,
     list pileup,
+    int window,
     int match_score,
     int mismatch_penalty,
     int gap_open_penalty,
@@ -433,7 +470,8 @@ cdef list preprocess_for_contig_construction(
         read for read in targetpileup if "S" in read["cigar_string"]
     ]
     nonclipped_targetpileup = [
-        read for read in targetpileup if not "S" in read["cigar_string"]
+        read for read in targetpileup if not "S" in read["cigar_string"] 
+        and (read.get("lt_cigar", None) and read.get("rt_cigar", None)) 
     ]
 
     
@@ -447,8 +485,8 @@ cdef list preprocess_for_contig_construction(
         
         if len(targetpileup) > 2:
             targetpileup = targetpileup[: min(20, int(len(targetpileup) / 1.25 ))]
-
-        unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, unspliced=True) 
+        
+        unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, window, unspliced=True) 
         unspl_aligner = make_aligner(unspl_ref_seq, match_score, mismatch_penalty)
         unspl_start = orig_target.pos + 1 - unspl_lt_len 
 
@@ -459,6 +497,7 @@ cdef list preprocess_for_contig_construction(
                 target,
                 orig_target,
                 is_gapped_aln,
+                window,
                 match_score,
                 mismatch_penalty,
                 gap_open_penalty,
@@ -480,6 +519,10 @@ cdef list preprocess_for_contig_construction(
         
         updated_cigars = [read for read in targetpileup if read.get("cigar_updated", False)]
         
+        #for read in updated_cigars:
+        #    if not read.get("lt_cigar", False):
+        #        print(read)
+        
         if not updated_cigars:    
             return targetpileup
         else:
@@ -493,12 +536,13 @@ def update_spliced_read_info(
     target, 
     orig_target, 
     is_gapped_aln, 
+    window, 
     match_score, 
     mismatch_penalty, 
     gap_open_penalty, 
     gap_extension_penalty
 ):
-    ref_seq, lt_len = get_local_reference(orig_target, [read])
+    ref_seq, lt_len = get_local_reference(orig_target, [read], window)
     aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
     ref_start = orig_target.pos + 1 - lt_len
     return update_read_info(

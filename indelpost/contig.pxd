@@ -13,4 +13,5 @@ cdef class Contig:
     cdef public str lt_consensus_seq, rt_consensus_seq, indel_seq
     cdef public list lt_consensus_scores, rt_consensus_scores, mismatches, non_target_indels, gaps
     cdef public int mapq
+    cdef public double low_qual_mapping_rate
     cdef public dict qc_stats

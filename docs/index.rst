@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-indelPost: python module to postprocess indel calls and alignments. 
+indelPost: postprocessing indel calls and alignments. 
 ===================================================================
 
 :Date: |today|

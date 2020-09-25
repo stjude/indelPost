@@ -15,21 +15,21 @@ random.seed(123)
 
 
 cdef class Contig:
-    def __cinit__(self, Variant target, list pileup, double low_consensus_thresh=0.7, int donwsample_lim=100):
+    def __cinit__(self, Variant target, list pileup, int basequalthresh, int mapqthresh, double low_consensus_thresh=0.7, int donwsample_lim=100):
         self.target = target
         self.pileup = pileup
 
-        self.targetpileup = self.__preprocess(donwsample_lim)
+        self.targetpileup = self.__preprocess(mapqthresh, donwsample_lim)
 
         if self.targetpileup:
-            self.__make_contig()
+            self.__make_contig(basequalthresh)
             self.failed = False
         else:
             self.qc_passed = False
             self.failed = True
 
 
-    def __preprocess(self, donwsample_lim):
+    def __preprocess(self, mapqthresh, donwsample_lim):
         targetpileup = [read for read in self.pileup if read["is_target"]]
         self.mapq = 0
 
@@ -39,13 +39,14 @@ cdef class Contig:
         if len(targetpileup) > donwsample_lim:
             targetpileup = random.sample(targetpileup, donwsample_lim)
 
-        self.mapq = np.median([read["mapq"] for read in targetpileup])
+        self.mapq = np.percentile([read["mapq"] for read in targetpileup], 50)
+        self.low_qual_mapping_rate = sum(read["mapq"] < mapqthresh for read in targetpileup) / len(targetpileup)
 
         return targetpileup
 
 
-    def __make_contig(self):
-        lt_consensus, rt_consensus = make_consensus(self.target, self.targetpileup)
+    def __make_contig(self, basequalthresh):
+        lt_consensus, rt_consensus = make_consensus(self.target, self.targetpileup, basequalthresh)
          
         self.__index_by_genome_coord(lt_consensus[0], rt_consensus[0])
         
@@ -84,11 +85,8 @@ cdef class Contig:
         self.lt_genomic_index = lt_index
         self.rt_genomic_index = rt_index
 
-        #tar = {self.target.pos: (self.target.ref, self.target.alt, 1.0, len(self.targetpileup))}
-
         genome_indexed_contig = lt_index
         genome_indexed_contig.update(rt_index)
-        #genome_indexed_contig.update(tar)
         self.contig_dict = OrderedDict(sorted(genome_indexed_contig.items()))
 
 

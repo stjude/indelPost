@@ -1,23 +1,32 @@
-#cython:profile=False
-
-cimport cython
 import re
 import random
+cimport cython
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
 
-from indelpost.utilities cimport split, locate_indels, get_spliced_subreads
-from .utilities import to_flat_list, get_mapped_subreads, most_common, split_cigar, get_local_reference
-from indelpost.variant cimport Variant
 
+from indelpost.variant cimport Variant
 from .consensus import consensus_refseq
 from .gappedaln import find_by_normalization
+
+from indelpost.utilities cimport (
+    split, 
+    locate_indels, 
+    get_spliced_subreads,
+)
+from .utilities import (
+    split_cigar,
+    most_common,
+    to_flat_list, 
+    get_mapped_subreads,  
+    get_local_reference,
+)
 from .localn import (
-    make_aligner,
     align,
+    make_aligner,
+    is_worth_realn,
     findall_indels,
     findall_mismatches,
-    is_worth_realn,
 )
 
 from pysam.libcfaidx cimport FastaFile
@@ -30,7 +39,12 @@ cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 cdef tuple make_pileup(
-    Variant target, AlignmentFile bam, bint exclude_duplicates, int window, int downsamplethresh, int basequalthresh,
+    Variant target, 
+    AlignmentFile bam, 
+    bint exclude_duplicates, 
+    int window, 
+    int downsamplethresh, 
+    int basequalthresh,
 ):
     cdef str chrom
     cdef int pos
@@ -90,13 +104,12 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
             and not read.is_secondary
             and read.cigarstring
         ]
-        #    and read.has_tag("MD")
-        #]
     else:
         reads = [
             read
             for read in all_reads
-            if not read.is_secondary and read.cigarstring and read.has_tag("MD")
+            if not read.is_secondary 
+            and read.cigarstring 
         ]
 
     return reads
@@ -232,7 +245,7 @@ cdef str get_ref_seq(
         if event == "M" or event == "D":
             ref_seq += reference.fetch(chrom, current_pos, current_pos + event_len)
             current_pos += event_len
-        elif event == "I" or event == "S":
+        elif event in ("I", "S", "H", "P"):
             pass
         else:
             current_pos += event_len
@@ -506,6 +519,7 @@ def retarget(
     perform_retarget,
     target,
     pileup,
+    window,
     mapq4retarget,
     within,
     retargetcutoff,
@@ -519,7 +533,7 @@ def retarget(
 
     target_seq, target_type = target.indel_seq, target.variant_type
 
-    ref_seq, lt_len = get_local_reference(target, pileup)
+    ref_seq, lt_len = get_local_reference(target, pileup, window)
 
     non_refs = [
         read_dict
@@ -558,6 +572,7 @@ def retarget(
         is_gapped_aln = False
 
         aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
+        
         ref_alns = [
             align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty)
             for read in non_refs
@@ -565,10 +580,10 @@ def retarget(
         ref_start = target.pos + 1 - lt_len
         for read, aln in zip(non_refs, ref_alns):
             genome_aln_pos = ref_start + aln.reference_start
-
+            
             gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
-
-            if gap_cnt < 3:
+            
+            if gap_cnt < 4:
                 indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
                 indels = [
                     indel for indel in indels if indel["indel_type"] == target_type
@@ -608,7 +623,7 @@ def retarget(
                 candidate = first
             else:
                 candidate = second
-
+        
         candidate.normalize(inplace=True)
         if abs(target.pos - candidate.pos) < within:
             idx = [i for i, var in enumerate(candidates) if var == candidate]
@@ -870,6 +885,7 @@ def update_read_positions(read, target_pos):
 def update_pileup(
     pileup,
     new_target,
+    window,
     match_score,
     mismatch_penalty,
     gap_open_penalty,
@@ -901,6 +917,7 @@ def update_pileup(
         return find_by_normalization(
             new_target,
             pileup,
+            window,
             match_score,
             mismatch_penalty,
             gap_open_penalty,

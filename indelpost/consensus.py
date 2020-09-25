@@ -8,7 +8,7 @@ from .utilities import most_common, to_flat_list
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
-def make_consensus(target, targetpileup):
+def make_consensus(target, targetpileup, basequalthresh):
 
     target_pos, target_type, target_len = (
         target.pos,
@@ -51,8 +51,8 @@ def make_consensus(target, targetpileup):
         for read in targetpileup
     ]
 
-    lt_consensus = consensus_data(lt_indexed, left=True)
-    rt_consensus = consensus_data(rt_indexed, left=False)
+    lt_consensus = consensus_data(lt_indexed, True, basequalthresh)
+    rt_consensus = consensus_data(rt_indexed, False, basequalthresh)
 
     return lt_consensus, rt_consensus
 
@@ -72,7 +72,7 @@ def index_bases(
     indexedbases = {}
 
     cigar = merge_consecutive_gaps(cigar)
-
+    
     if left:
         current_pos = read_pos
     else:
@@ -112,15 +112,9 @@ def index_bases(
 
         cigar = cigar[1:]
 
-        # if "I" in cigar[0] or "D" in cigar[0]:
-        #    cigar = cigar[1:]
-        # if target_type == "I":
-        #    current_pos = target_pos + 1
-        # else:
-        #    current_pos = target_pos + target_len + 1
 
     for c in cigar:
-
+        # complex pattrn (I and D merged)
         if "I" in c and "D" in c:
             tmp = cigar_ptrn.findall(c)
             ins_len = sum(int(i[:-1]) for i in tmp if i[-1] == "I")
@@ -139,7 +133,7 @@ def index_bases(
             )
 
             del_seq, ref = ref[:del_len], ref[del_len:]
-
+            
             indexedbases[current_pos - 1] = (
                 padding_ref + del_seq,
                 padding_ref + ins_seq,
@@ -151,9 +145,9 @@ def index_bases(
         else:
             event, event_len = c[-1], int(c[:-1])
 
-            if event == "M" or event == "S":
+            if event in ("M", "S", "X", "="):
                 for i in range(event_len):
-                    if ref and event == "M":
+                    if ref and event != "S":
                         indexedbases[current_pos] = (ref[0], flank[0], qual[0])
                         ref = ref[1:]
                     else:
@@ -191,7 +185,7 @@ def index_bases(
                     padding_ref,
                     padding_qual,
                 )
-
+                
                 current_pos += event_len
 
             elif event == "N":
@@ -224,14 +218,14 @@ def merge_consecutive_gaps(cigar_lst):
     return merged_lst
 
 
-def consensus_data(indexedbases_list, left):
+def consensus_data(indexedbases_list, left, basequalthresh):
 
     consensus_index = OrderedDict()
 
     skip_loci = []
     for locus in locus_list(indexedbases_list, left):
         ref, consensus_base, consensus_score, coverage = get_consensus_base(
-            indexedbases_list, locus
+            indexedbases_list, locus, basequalthresh
         )
 
         if len(ref) > len(consensus_base):
@@ -239,7 +233,7 @@ def consensus_data(indexedbases_list, left):
             skip_loci += [locus + i for i in range(1, del_len + 1)]
 
         consensus_index[locus] = (ref, consensus_base, consensus_score, coverage)
-
+    
     for locus in skip_loci:
         if locus in consensus_index:
             del consensus_index[locus]
@@ -279,7 +273,7 @@ def consensus_data(indexedbases_list, left):
         refseq = refseq[::-1]
         scores = scores[::-1]
         coverages = coverages[::-1]
-
+    
     return consensus_index, ref_end, refseq, conseq, scores, coverages
 
 
@@ -290,7 +284,7 @@ def locus_list(dict_list, left):
     return loci
 
 
-def get_consensus_base(indexedbases_list, locus, qual_lim=23):
+def get_consensus_base(indexedbases_list, locus, basequalthresh):
 
     refs = [
         indexedbases[locus][0].upper()
@@ -312,7 +306,7 @@ def get_consensus_base(indexedbases_list, locus, qual_lim=23):
         ref = most_common(refs) if refs else ""
         return ref, "N", 0.0, 0
 
-    hq_bases = [base for base, qual in zip(bases, quals) if qual > qual_lim]
+    hq_bases = [base for base, qual in zip(bases, quals) if qual >= basequalthresh]
 
     refs = refs + [""] * (len(bases) - len(refs))
 
@@ -322,7 +316,7 @@ def get_consensus_base(indexedbases_list, locus, qual_lim=23):
     consensus_score = pairs.count(consensus_pair) / len(pairs)
 
     ref, consensus_base = consensus_pair[0], consensus_pair[1]
-
+    
     if ref:
         if ref != consensus_base:
             if not consensus_base in hq_bases:

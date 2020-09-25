@@ -163,10 +163,10 @@ cpdef list get_mapped_subreads(str cigarstring, int aln_start_pos, int aln_end_p
     for cigar in cigar_lst:
         event, event_len = cigar[-1], int(cigar[:-1])
 
-        if event == "M":
+        if event in ("M", "X", "="):
             res.append((current_pos, (current_pos + event_len - 1)))
             current_pos += event_len
-        elif event == "I" or event == "S":
+        elif event in ("I", "S", "H", "P"):
             pass
         else:
             current_pos += event_len 
@@ -189,7 +189,7 @@ cdef list get_spliced_subreads(str cigarstring, int read_start_pos, int read_end
     prev_event = "A"
     for cigar in cigar_lst:
         event, event_len = cigar[-1], int(cigar[:-1])
-        if event == "I":
+        if event in ("I", "H", "P"):
             pass
         else:
             if event == "N":
@@ -225,6 +225,8 @@ cpdef int get_end_pos(int read_start_pos, str lt_flank, str cigarstring):
             read_start_pos += event_len
         elif event == "I":
             flank_len -= event_len
+        elif event == "H" or event == "P":
+            pass
         else: 
             flank_len -= event_len
             read_start_pos += event_len
@@ -250,6 +252,8 @@ cdef tuple locate_indels(str cigarstring, int aln_start_pos):
         elif event == "D":
             dels.append((aln_start_pos, event_len))
             aln_start_pos += event_len
+        elif event == "H" or event == "P":
+            pass
         else:
             aln_start_pos += event_len
 
@@ -268,7 +272,7 @@ cpdef tuple split_cigar(str cigarstring, int target_pos, int start):
     for cigar in cigar_lst:
         event, event_len = cigar[-1], int(cigar[:-1])
         
-        move = 0 if event == "I" else event_len
+        move = 0 if event in ("I", "H", "P") else event_len
         start += move
         rt_lst = rt_lst[1 :]
 
@@ -285,17 +289,19 @@ cpdef tuple split_cigar(str cigarstring, int target_pos, int start):
             lt_lst.append(cigar)
 
 
-def relative_aln_pos(ref_seq, cigar_lst, aln_start, target_pos):
+def relative_aln_pos(ref_seq, cigar_lst, aln_start, target_pos, include_clip=False):
     
     current_pos = aln_start - 1
     ref_seq_pos = 0
     for cigar in cigar_lst:
         event, event_len = cigar[-1], int(cigar[:-1])
-        
+
+        event = "M" if include_clip and event == "S" else event
+
         if event == "M" or event == "D":
             current_pos += event_len
             ref_seq_pos += event_len
-        elif event == "I" or event == "S":
+        elif event in ("I", "H", "P"):
             pass
         else:
             current_pos += event_len
@@ -340,6 +346,9 @@ cdef tuple split(
         elif event == "D":
             g_move = event_len
             d_move = event_len if is_for_ref else 0
+        elif event == "H" or event == "P":
+            d_move = 0
+            g_move = 0    
         else:
             g_move, d_move = event_len, event_len
         
@@ -381,7 +390,7 @@ cdef tuple split(
     return lt, rt
 
 
-cpdef tuple get_local_reference(Variant target, list pileup, bint unspliced=False):
+cpdef tuple get_local_reference(Variant target, list pileup, int window, bint unspliced=False):
 
     cdef str span
     cdef tuple ptrn 
@@ -423,7 +432,7 @@ cpdef tuple get_local_reference(Variant target, list pileup, bint unspliced=Fals
         
         for i, x in enumerate(spl_pos):
             if i == 0:
-                lt_end = max(0, x - 100)
+                lt_end = max(0, x - window * 2)
                 local_reference += reference.fetch(chrom, lt_end, x -1)
                 rt_end = x - 1
             elif i % 2 == 1 and i != last_idx:
@@ -432,7 +441,7 @@ cpdef tuple get_local_reference(Variant target, list pileup, bint unspliced=Fals
             elif i % 2 == 0:
                 pass
             elif i == last_idx:
-                rt_end = min(x + 100, ref_len)
+                rt_end = min(x + window * 2, ref_len)
                 local_reference += reference.fetch(chrom, x, rt_end)
             
             if pos <= rt_end and not first_pass:
@@ -440,7 +449,7 @@ cpdef tuple get_local_reference(Variant target, list pileup, bint unspliced=Fals
                 first_pass = True
 
     else:   
-        local_reference = reference.fetch(chrom, max(0, pos - 150), min(pos + 150, ref_len))
-        left_len = pos - max(0, pos - 150)
+        local_reference = reference.fetch(chrom, max(0, pos - window * 3), min(pos + window * 3, ref_len))
+        left_len = pos - max(0, pos - window * 3)
     
     return local_reference, left_len    

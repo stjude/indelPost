@@ -6,20 +6,21 @@ from ssw import SSW
 
 from .consensus import is_compatible
 from .utilities import get_mapped_subreads, get_end_pos
+
 from indelpost.utilities cimport split
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 def find_by_smith_waterman_realn(
-    target_indel, 
-    contig, 
-    pileup, 
-    match_score, 
-    mismatch_penalty, 
-    gap_open_penalty, 
-    gap_extension_penalty, 
-    mapq_lim=1
+    target_indel,
+    contig,
+    pileup,
+    match_score,
+    mismatch_penalty,
+    gap_open_penalty,
+    gap_extension_penalty,
+    mapq_lim=1,
 ):
     """Annotate if reads contain target indel
 
@@ -36,7 +37,6 @@ def find_by_smith_waterman_realn(
     mut_ref_lt, mut_ref_mid, mut_ref_rt = contig.get_contig_seq(split=True)
     ref_ref = contig.get_reference_seq()
     mut_ref = mut_ref_lt + mut_ref_mid + mut_ref_rt
-     
 
     mut_aligner = make_aligner(mut_ref, match_score, mismatch_penalty)
     ref_aligner = make_aligner(ref_ref, match_score, mismatch_penalty)
@@ -45,20 +45,20 @@ def find_by_smith_waterman_realn(
 
     pileup = [
         is_target_by_ssw(
-            read, 
+            read,
             target_indel,
-            contig, 
+            contig,
             mut_ref_lt,
             mut_ref_mid,
             mut_ref_rt,
-            mut_aligner, 
+            mut_aligner,
             ref_aligner,
             match_score,
-            mismatch_penalty, 
-            gap_open_penalty, 
-            gap_extension_penalty, 
-            indel_type, 
-            mapq_lim
+            mismatch_penalty,
+            gap_open_penalty,
+            gap_extension_penalty,
+            indel_type,
+            mapq_lim,
         )
         for read in pileup
     ]
@@ -73,31 +73,29 @@ def findall_mismatches(read, end_trim=0):
         return read
 
     aln_start, aln_end = read["aln_start"], read["aln_end"]
-    mapped_subpreads = get_mapped_subreads(
-        read["cigar_string"], aln_start, aln_end
-    )
- 
+    mapped_subpreads = get_mapped_subreads(read["cigar_string"], aln_start, aln_end)
+
     mismatches = []
     for subread in mapped_subpreads:
         start, end = subread[0], subread[1]
         span = end - start + 1
-        
+
         # trim clipped segments
         cigarstring = read["cigar_string"]
         if "S" in cigarstring:
             cigarlst = read["cigar_list"]
             read_seq = read["read_seq"]
             quals = read["read_qual"]
-            
-            if "S" in cigarlst[0]: 
+
+            if "S" in cigarlst[0]:
                 cigarlst = cigarlst[1:]
                 read_seq = read_seq[read["start_offset"] :]
                 quals = quals[read["start_offset"] :]
-                
+
             if "S" in cigarlst[-1]:
                 cigarlst = cigarlst[:-1]
-                read_seq = read_seq[:-read["end_offset"]]
-                quals = quals[:-read["end_offset"]]
+                read_seq = read_seq[: -read["end_offset"]]
+                quals = quals[: -read["end_offset"]]
 
             cigarstring = "".join(cigarlst)
         else:
@@ -105,20 +103,10 @@ def findall_mismatches(read, end_trim=0):
             quals = read["read_qual"]
 
         lt_seq, rt_seq = split(
-            read_seq,
-            cigarstring,
-            start,
-            aln_start,
-            is_for_ref=False,
-            reverse=False,
+            read_seq, cigarstring, start, aln_start, is_for_ref=False, reverse=False,
         )
         lt_qual, rt_qual = split(
-            quals,
-            cigarstring,
-            start,
-            aln_start,
-            is_for_ref=False,
-            reverse=False,
+            quals, cigarstring, start, aln_start, is_for_ref=False, reverse=False,
         )
         lt_ref, rt_ref = split(
             read["ref_seq"],
@@ -128,21 +116,21 @@ def findall_mismatches(read, end_trim=0):
             is_for_ref=True,
             reverse=False,
         )
-        
-        mapped_seq = lt_seq[-1] + rt_seq[: span-1]
-        mapped_qual = [lt_qual[-1]] + list(rt_qual[: span-1])
-        mapped_ref = lt_ref[-1] + rt_ref[: span-1]
-       
-        pos = start #pos for first elem of the rt side
+
+        mapped_seq = lt_seq[-1] + rt_seq[: span - 1]
+        mapped_qual = [lt_qual[-1]] + list(rt_qual[: span - 1])
+        mapped_ref = lt_ref[-1] + rt_ref[: span - 1]
+
+        pos = start  # pos for first elem of the rt side
         for r, a, q in zip(mapped_ref, mapped_seq, mapped_qual):
             if r != a:
                 if aln_start + end_trim < pos < aln_end - end_trim:
                     mismatches.append((pos, r.upper(), a, q))
-            
+
             pos += 1
-    
+
     read["mismatches"] = mismatches
-    
+
     return read
 
 
@@ -157,22 +145,24 @@ def is_worth_realn(read, qual_lim=23):
         return False
 
     start_cigar, end_cigar = read["cigar_list"][0], read["cigar_list"][-1]
-    
-    # start clipped 
+
+    # start clipped
     if covering_start < read["aln_start"] and int(start_cigar[:-1]) > 3:
         return True
-    
-    # end clipped 
+
+    # end clipped
     if read["aln_end"] < covering_end and int(end_cigar[:-1]) > 3:
         return True
-    
+
     mismatches = [
         var
         for var in read["mismatches"]
         if covering_start <= var[0] <= covering_end and var[3] > qual_lim
     ]
 
-    indels = [var for var in read["I"] + read["D"] if covering_start <= var[0] <= covering_end]
+    indels = [
+        var for var in read["I"] + read["D"] if covering_start <= var[0] <= covering_end
+    ]
 
     if len(mismatches) > 2 or indels:
         return True
@@ -182,21 +172,21 @@ def is_worth_realn(read, qual_lim=23):
 
 def is_target_by_ssw(
     read,
-    target_indel, 
+    target_indel,
     contig,
     mut_ref_lt,
     mut_ref_mid,
-    mut_ref_rt, 
-    mut_aligner, 
+    mut_ref_rt,
+    mut_aligner,
     ref_aligner,
     match_score,
-    mismatch_penalty, 
-    gap_open_penalty, 
-    gap_extension_penalty, 
-    indel_type, 
-    mapq_lim, 
+    mismatch_penalty,
+    gap_open_penalty,
+    gap_extension_penalty,
+    indel_type,
+    mapq_lim,
     mapped_base_cnt_thresh=40,
-    allow_mismatches = 2
+    allow_mismatches=2,
 ):
 
     # already found
@@ -210,27 +200,33 @@ def is_target_by_ssw(
     read_seq = read["read_seq"]
     mut_aln = align(mut_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
-    
+
     if not target_indel.count_repeats():
         mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
         if len(mut_cigar_list) == 1:
             mapped_len = int(mut_cigar_list[0][:-1])
             if mut_aln.reference_start < len(mut_ref_lt) < mapped_len:
-                allow_mismatches = 0 if len(target_indel.indel_seq) < 4 else allow_mismatches
-                if mut_aln.optimal_score >= match_score * mapped_len - (allow_mismatches * mismatch_penalty): 
+                allow_mismatches = (
+                    0 if len(target_indel.indel_seq) < 4 else allow_mismatches
+                )
+                if mut_aln.optimal_score >= match_score * mapped_len - (
+                    allow_mismatches * mismatch_penalty
+                ):
                     read["is_target"] = True
                     return read
-     
+
     if not indel_type in ref_aln.CIGAR:
         return read
-    
+
     # lower score against mut_ref alignment
     if mut_aln.optimal_score <= ref_aln.optimal_score:
         read["is_target"] = False
         return read
-    
+
     # too few mapped bases
-    mapped_bases = sum([int(c[:-1]) for c in cigar_ptrn.findall(mut_aln.CIGAR) if "M" in c])
+    mapped_bases = sum(
+        [int(c[:-1]) for c in cigar_ptrn.findall(mut_aln.CIGAR) if "M" in c]
+    )
     if mapped_bases < mapped_base_cnt_thresh:
         read["is_target"] = False
         return read
@@ -240,7 +236,7 @@ def is_target_by_ssw(
     )
 
     read["aln_score"] = (mut_aln.optimal_score, ref_aln.optimal_score)
-     
+
     return read
 
 
@@ -276,7 +272,7 @@ def parse_read_by_mut_aln(mut_aln, contig, read, indel_type):
     read_qual = read["read_qual"]
     ref_start, ref_end = mut_aln.reference_start, mut_aln.reference_end
     aln_start, aln_end = mut_aln.read_start, mut_aln.read_end
-    
+
     lt_flank, mid_seq, rt_flank = "", "", ""
     lt_qual, rt_qual = [], []
 
@@ -290,8 +286,10 @@ def parse_read_by_mut_aln(mut_aln, contig, read, indel_type):
         else:
             rt_flank = read_seq[aln_start + lt_diff :]
             rt_qual = read_qual[aln_start + lt_diff :]
-            del_pos = get_end_pos(read["read_start"] + aln_start, lt_flank, read["cigar_string"]) 
-            
+            del_pos = get_end_pos(
+                read["read_start"] + aln_start, lt_flank, read["cigar_string"]
+            )
+
             lt_ref, rt_ref = split(
                 read["ref_seq"],
                 read["cigar_string"],
@@ -302,8 +300,7 @@ def parse_read_by_mut_aln(mut_aln, contig, read, indel_type):
             )
 
             read["del_pos"] = del_pos
-            read["del_seq"] = rt_ref[: indel_len]
-            
+            read["del_seq"] = rt_ref[:indel_len]
 
     if lt_len + indel_len <= ref_end and indel_type == "I":
         rt_diff = ref_end - (lt_len + indel_len)
@@ -311,13 +308,13 @@ def parse_read_by_mut_aln(mut_aln, contig, read, indel_type):
         rt_qual = read_qual[aln_end - rt_diff : aln_end]
         end_point = max(aln_start, aln_end - rt_diff - indel_len)
         mid_seq = read_seq[end_point : aln_end - rt_diff]
-    
+
     read["lt_flank"] = lt_flank
     read["lt_qual"] = lt_qual
     read["indel_seq"] = mid_seq
     read["rt_flank"] = rt_flank
     read["rt_qual"] = rt_qual
-    
+
     return read
 
 
