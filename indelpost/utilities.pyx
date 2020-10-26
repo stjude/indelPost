@@ -31,6 +31,9 @@ cpdef list to_flat_vcf_records(VariantRecord record):
         "VcfRec", "chrom pos id ref alt qual filter info format samples orig"
     )
 
+    if not record.alts:
+        return []
+         
     flat_record = [
         VcfRec(
             chrom=record.chrom,
@@ -189,20 +192,20 @@ cdef list get_spliced_subreads(str cigarstring, int read_start_pos, int read_end
     prev_event = "A"
     for cigar in cigar_lst:
         event, event_len = cigar[-1], int(cigar[:-1])
+        
+        if event == "N":
+            pos_lst.append(read_start_pos - 1)
+        elif prev_event == "N":
+            pos_lst.append(read_start_pos)
+          
         if event in ("I", "H", "P"):
             pass
         else:
-            if event == "N":
-                pos_lst.append(read_start_pos - 1)
-            elif prev_event == "N":
-                pos_lst.append(read_start_pos)
-          
             read_start_pos += event_len
         
         prev_event = event
     
     pos_lst.append(read_end_pos) 
-    
     while i < len(pos_lst):
         res.append(pos_lst[i : i+2])
         i += 2
@@ -433,7 +436,7 @@ cpdef tuple get_local_reference(Variant target, list pileup, int window, bint un
         for i, x in enumerate(spl_pos):
             if i == 0:
                 lt_end = max(0, x - window * 2)
-                local_reference += reference.fetch(chrom, lt_end, x -1)
+                local_reference += reference.fetch(chrom, lt_end, x - 1)
                 rt_end = x - 1
             elif i % 2 == 1 and i != last_idx:
                 local_reference += reference.fetch(chrom, x, spl_pos[i+1] - 1)

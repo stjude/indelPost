@@ -290,10 +290,15 @@ cdef class Variant:
         
         chrom = self.__format_chrom_name(self.chrom, vcf=vcf)
         
+        searchable = vcf.fetch(chrom, leftaligned_pos - 1, leftaligned_pos - 1 + window)
+        
+        if not searchable:
+            return []
+
         records = to_flat_list(
             [
                 to_flat_vcf_records(rec)
-                for rec in vcf.fetch(chrom, leftaligned_pos - 1, leftaligned_pos - 1 + window)
+                for rec in searchable
             ]
         )
         

@@ -53,7 +53,8 @@ cdef tuple make_pileup(
     cdef dict read
     
     chrom, pos, reference = target.chrom, target.pos, target.reference
-
+    rpos = max(v.pos for v in target.generate_equivalents())
+    
     ref_len = reference.get_reference_length(chrom)
     
     pileup = fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates)
@@ -67,7 +68,7 @@ cdef tuple make_pileup(
         sample_factor = 1.0
 
     pileup = [
-        dictize_read(seg, chrom, pos, reference, basequalthresh) for seg in pileup
+        dictize_read(seg, chrom, pos, rpos, reference, basequalthresh) for seg in pileup
     ]
     
     pileup = [read for read in pileup if not is_within_intron(read, pos, window)]
@@ -116,7 +117,7 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
 
 
 
-cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile reference, int basequalthresh):
+cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaFile reference, int basequalthresh):
     
     cdef tuple ins, deln
     
@@ -159,10 +160,11 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile refere
 
     # base qual check
     read_dict["low_qual_base_num"] = sum(q <= basequalthresh for q in read_qual)
+    
     read_dict["is_dirty"] = read_dict["low_qual_base_num"] / len(read_seq) > 0.15
-
+    
     insertions, deletions = locate_indels(cigar_string, read_start)
-
+    
     for ins in insertions:
         read_dict["I"].append(
             leftalign_indel_read(
@@ -213,7 +215,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, FastaFile refere
         is_spliced,
         splice_ptrn,
         intron_ptrn,
-    ) = parse_spliced_read(cigar_string, read_start, read_end, pos)
+    ) = parse_spliced_read(cigar_string, read_start, read_end, pos, rpos)
 
     read_dict["is_covering"] = is_covering
     read_dict["covering_subread"] = covering_subread
@@ -275,16 +277,17 @@ cdef tuple leftalign_indel_read(
     lt_qual, rt_qual = split(
         read_qual, cigar_string, pos, read_start, is_for_ref=False, reverse=False
     )
-
+    
+    padding_base = reference.fetch(chrom, pos - 1, pos) if "N" in cigar_string or not lt_ref else lt_ref[-1]
     if indel_type == "I":
         indel_seq = rt_flank[:indel_len]
         rt_flank = rt_flank[indel_len:]
         rt_qual = rt_qual[indel_len:]
-        var = Variant(chrom, pos, lt_ref[-1], lt_ref[-1] + indel_seq, reference)
+        var = Variant(chrom, pos, padding_base, padding_base + indel_seq, reference)
     else:
         indel_seq = rt_ref[:indel_len]
         rt_ref = rt_ref[indel_len:]
-        var = Variant(chrom, pos, lt_ref[-1] + indel_seq, lt_ref[-1], reference)
+        var = Variant(chrom, pos, padding_base + indel_seq, padding_base, reference)
 
     if var.is_leftaligned:
         return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
@@ -327,13 +330,13 @@ cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
     return "".join(lt_cigar_lst) + new_cigar
 
 
-cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, int pos):
+cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, int pos, int rpos):
     spliced_subreads = get_spliced_subreads(cigar_string, read_start, read_end)
 
     is_covering = False
     covering_subread = None
     for subread in spliced_subreads:
-        if subread[0] < pos < subread[1]:
+        if subread[0] <= pos <= subread[1] or subread[0] <= rpos <= subread[1]:
             is_covering = True
             covering_subread = tuple(subread)
 
@@ -541,9 +544,10 @@ def retarget(
         if not read_dict["is_reference_seq"]
         and read_dict["is_covering"]
         and read_dict["mapq"] > mapq4retarget
+        and read_dict["low_qual_base_num"] < 4
         and not read_dict["is_dirty"]
     ]
-
+    
     if not non_refs:
         return None
 
@@ -571,18 +575,24 @@ def retarget(
     if not candidates or not best_matches:
         is_gapped_aln = False
 
-        aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
+        ref_starts = []
+        ref_alns = []
+        for read in non_refs:
+            ref_seq, lt_len = get_local_reference(target, [read], window)        
+            aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
+            ref_alns.append(align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty))
+            ref_starts.append(target.pos + 1 - lt_len)
         
-        ref_alns = [
-            align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty)
-            for read in non_refs
-        ]
-        ref_start = target.pos + 1 - lt_len
-        for read, aln in zip(non_refs, ref_alns):
+        #ref_alns = [
+        #    align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty)
+        #    for read in non_refs
+        #]
+        
+        #ref_start = target.pos + 1 - lt_len
+        for read, aln, ref_start in zip(non_refs, ref_alns, ref_starts):
             genome_aln_pos = ref_start + aln.reference_start
             
             gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
-            
             if gap_cnt < 4:
                 indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
                 indels = [
@@ -595,12 +605,12 @@ def retarget(
                     else:
                         alt = indel["lt_ref"][-1]
                         ref = alt + indel["del_seq"]
-
+                    
                     candidates.append(
                         Variant(target.chrom, indel["pos"], ref, alt, target.reference)
                     )
                     candidate_reads.append(read)
-
+    
     if not candidates:
         return None
 
@@ -614,6 +624,7 @@ def retarget(
 
     if best_matches:
         idx = [i for i, seq in enumerate(candidate_seqs) if seq in best_matches]
+        
         u_candidates = [u_candidates[i] for i in idx]
         if len(u_candidates) == 1:
             candidate = u_candidates[0]
@@ -627,8 +638,8 @@ def retarget(
         candidate.normalize(inplace=True)
         if abs(target.pos - candidate.pos) < within:
             idx = [i for i, var in enumerate(candidates) if var == candidate]
+            
             candidate_reads = [candidate_reads[i] for i in idx]
-
             chrom, pos, indel_len, indel_type, reference = (
                 candidate.chrom,
                 candidate.pos,
@@ -656,7 +667,7 @@ def retarget(
                     )
                     for read in candidate_reads
                 ]
-
+            
             return candidate, candidate_reads
         else:
             return None
@@ -708,10 +719,9 @@ def update_read_info(
         )
         
         indels = [indel for indel in indels if abs(candidate.pos - indel["pos"]) == 0]
-        
+         
         if indels:
             indel = indels[0]
-            
             if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
                 pass
             elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:
@@ -728,7 +738,7 @@ def update_read_info(
         read["rt_flank"] = indel["rt_flank"]
         read["lt_qual"] = indel["lt_qual"]
         read["rt_qual"] = indel["rt_qual"]
-
+        
         realn_lt_cigar, realn_rt_cigar = split_cigar(
             aln.CIGAR, candidate.pos, genome_aln_pos
         )
@@ -801,28 +811,39 @@ def update_cigar(
 
     for c in realn_cigar:
         event, event_len = c[-1], int(c[:-1])
-
         if event == "M":
             if spl_spans:
-                span = spl_spans[0]
-                spl_start, spl_end = span[0], span[1]
-                n = spl_end - spl_start + 1
+                last = len(spl_spans) - 1
+                tmp = spl_spans.copy()
+                for i, span in enumerate(tmp):
+                    n = span[1] - span[0] + 1
+                    if span[0] <= current_pos + event_len:
+                        if i != last:
+                            m = span[0] - current_pos
+                            
+                            new_cigar += [str(m) + "M", str(n) + "N"]
+                                             
+                            current_pos += m + n
+                            event_len -= m
+                        else:
+                            m1 = span[0] - current_pos
+                            m2 = event_len - m1
 
-                if spl_start <= current_pos + event_len:
-                    m1 = spl_start - current_pos
-                    m2 = event_len - m1
-                    if m2:
-                        this_event = [str(m1) + "M", str(n) + "N", str(m2) + "M"]
+                            if m2:
+                                if m1:
+                                    new_cigar += [str(m1) + "M", str(n) + "N", str(m2) + "M"]
+                                else:
+                                     new_cigar += [str(n) + "N", str(m2) + "M"]
+                            else:
+                                new_cigar += [str(event_len) + "M", str(n) + "N"]
+                                     
+                            current_pos += n + event_len
+                        spl_spans = spl_spans[1:]
                     else:
-                        this_event = [str(event_len) + "M", str(n) + "N"]
+                        new_cigar.append(str(event_len) + "M") 
+                        current_pos += event_len
+                        break
 
-                    new_cigar += this_event
-                    current_pos += n + event_len
-
-                    spl_spans = spl_spans[1:]
-                else:
-                    new_cigar.append(str(event_len) + "M")
-                    current_pos += event_len
             else:
                 new_cigar.append(str(event_len) + "M")
                 current_pos += event_len
@@ -835,7 +856,6 @@ def update_cigar(
                 n = spl_end - spl_start + 1
 
                 if spl_start == current_pos:
-
                     this_event = [str(event_len) + "I", str(n) + "N"]
 
                     new_cigar += this_event
@@ -893,7 +913,8 @@ def update_pileup(
     basequalthresh,
     bypass_search=False
 ):
-
+    
+    rpos = max(v.pos for v in new_target.generate_equivalents())
     for read in pileup:
         (
             is_covering,
@@ -902,7 +923,7 @@ def update_pileup(
             splice_ptrn,
             intron_ptrn,
         ) = parse_spliced_read(
-            read["cigar_string"], read["read_start"], read["read_end"], new_target.pos
+            read["cigar_string"], read["read_start"], read["read_end"], new_target.pos, rpos
         )
 
         read["is_covering"] = is_covering

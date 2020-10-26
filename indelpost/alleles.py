@@ -9,7 +9,7 @@ from .variant import Variant
 from .localn import findall_mismatches
 
 
-def hard_phase_nearby_variants(
+def phase_nearby_variants(
     target,
     contig,
     pileup,
@@ -21,11 +21,18 @@ def hard_phase_nearby_variants(
     indel_repeat_thresh,
     sequence_complexity_thresh,
     dbsnp,
+    hard=False,
 ):
 
-    if contig.failed or contig.mapq < mapq_thresh or contig.low_qual_mapping_rate >= 0.1:
+    if hard:
+        if contig.failed:
+            return target
+        else:
+            return greedy_phasing(target, contig.contig_dict)
+    
+    if contig.failed or contig.mapq < mapq_thresh or contig.is_target_right_aligned:
         return None
-
+    
     if (
         seq_complexity(contig, snv_neighborhood, indel_neighborhood)
         < sequence_complexity_thresh
@@ -40,7 +47,6 @@ def hard_phase_nearby_variants(
         return None
 
     variants_to_phase = contig.mismatches + contig.non_target_indels
-    
     if not variants_to_phase:
         return None
 
@@ -75,11 +81,11 @@ def hard_phase_nearby_variants(
     rt_end = min(rt_loci) if rt_loci else np.inf
 
     remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
-
+    
     mismatches_to_phase = [var for var in variants_to_phase if not var.is_indel]
     non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel]
-
-    if mismatches_to_phase:
+    
+    if variants_to_phase:
         if not non_target_indels_to_phase:
             peak_locs = locate_mismatch_cluster_peaks(
                 indexed_contig, mismatches_to_phase, target, snv_neighborhood
@@ -102,18 +108,9 @@ def hard_phase_nearby_variants(
 
             remove_common_substrings(indexed_contig, target.pos, indel_neighborhood)
     
-    cpos = 0
-    cref = ""
-    calt = ""
-    for k, v in indexed_contig.items():
-
-        if not cpos:
-            cpos = k
-        cref += v[0]
-        calt += v[1]
-
-    cvar = Variant(target.chrom, cpos, cref, calt, target.reference).normalize()
-
+     
+    cvar = greedy_phasing(target, indexed_contig)
+    
     if (
         len(cvar.ref) > 14
         and len(cvar.alt) > 14
@@ -125,6 +122,22 @@ def hard_phase_nearby_variants(
         return cvar
     else:
         return None
+
+
+def greedy_phasing(target, indexed_contig):
+
+    cpos = 0
+    cref = ""
+    calt = ""
+    
+    for k, v in indexed_contig.items():
+        if not cpos:
+            cpos = k
+         
+        cref += v[0]
+        calt += v[1]
+
+    return Variant(target.chrom, cpos, cref, calt, target.reference).normalize()
 
 
 def seq_complexity(contig, snv_neighborhood, indel_neighorhood):
@@ -417,7 +430,7 @@ def remove_deletables(indexed_contig, lt_end, target_pos, rt_end):
 def remove_common_substrings(indexed_contig, target_pos, max_common_str_len):
 
     common_sub_strs = profile_common_substrings(indexed_contig)
-
+    
     lt_commons = [sub_str for sub_str in common_sub_strs if sub_str[1] < target_pos]
     rt_commons = [sub_str for sub_str in common_sub_strs if target_pos < sub_str[0]]
 

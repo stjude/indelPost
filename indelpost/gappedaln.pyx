@@ -43,6 +43,7 @@ def find_by_normalization(
         return find_by_normalization(
             target,
             pileup,
+            window,
             match_score,
             mismatch_penalty,
             gap_open_penalty,
@@ -109,7 +110,7 @@ def get_most_centered_read(target, pileup, target_annotated=True):
         dist2center = [
             0.5
             - relative_aln_pos(
-                read["ref_seq"], read["cigar_list"], read["aln_start"], target.pos
+                read["ref_seq"], read["cigar_list"], read["aln_start"], target.pos,
             )
             for read in targetpileup
         ]
@@ -263,11 +264,13 @@ def seek_larger_gapped_aln(
     genome_aln_pos = target.pos + 1 - lt_len + aln.reference_start
 
     indels = findall_indels(aln, genome_aln_pos, ref_seq, read_seq)
-
     if not indels:
         return target, gap_extension_penalty
 
     closest = min([abs(target.pos - indel["pos"]) for indel in indels])
+    if "N" in read["cigar_string"] and closest > 3:
+        return target, gap_extension_penalty
+
     candidates = [
         indel for indel in indels if abs(target.pos - indel["pos"]) == closest
     ]

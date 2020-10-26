@@ -9,6 +9,7 @@ cdef class Contig:
     cdef int start, end
     cdef str lt_reference_seq, rt_reference_seq
     cdef double low_consensus_thresh
+    cdef public int is_target_right_aligned
     cdef public object contig_dict
     cdef public str lt_consensus_seq, rt_consensus_seq, indel_seq
     cdef public list lt_consensus_scores, rt_consensus_scores, mismatches, non_target_indels, gaps

@@ -16,9 +16,9 @@ from .gappedaln import find_by_normalization
 from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
 
-from .alleles import hard_phase_nearby_variants
+from .alleles import phase_nearby_variants
 
-from .utilities import get_local_reference, relative_aln_pos
+from .utilities import get_local_reference, relative_aln_pos, split_cigar
 
 from indelpost.pileup cimport make_pileup
 from indelpost.utilities cimport split
@@ -85,6 +85,7 @@ cdef class VariantAlignment:
         int mismatch_penalty=2,
         int gap_open_penalty=3,
         int gap_extension_penalty=1,
+        int auto_adjust_extension_penalty_thresh=20,
     ):
         
         if not target.is_non_complex_indel():
@@ -105,7 +106,13 @@ cdef class VariantAlignment:
         self.match_score = match_score
         self.mismatch_penalty = mismatch_penalty
         self.gap_open_penalty = gap_open_penalty
-        self.gap_extension_penalty = gap_extension_penalty
+
+        if (auto_adjust_extension_penalty_thresh <= 0 or 
+            len(target.indel_seq) <= auto_adjust_extension_penalty_thresh
+        ):    
+            self.gap_extension_penalty = gap_extension_penalty
+        else:
+            self.gap_extension_penalty = 0
 
         self.__pileup, self.contig = self.__parse_pileup()
     
@@ -134,11 +141,6 @@ cdef class VariantAlignment:
                 basequalthresh=self.basequalthresh,
             )
             
-            for read in pileup:
-                if "H" in read["read"].cigarstring:
-                    print(read)
-            
-            
             self.__target, pileup, exptension_penalty_used = find_by_normalization(
                 self.__target,
                 pileup,
@@ -149,7 +151,7 @@ cdef class VariantAlignment:
                 self.gap_extension_penalty,
                 self.basequalthresh,
             )
-
+            
             if self.target != self.__target:
                     self.__target, pileup = update_pileup(
                         pileup,
@@ -183,7 +185,7 @@ cdef class VariantAlignment:
             if contig.failed:
 
                 within = min(self.retarget_window, len(self.__target.indel_seq) * 3)
-
+                
                 ans = check_overhangs(pileup)
                 if ans:
                     intron, overhangs = ans[0], ans[1]
@@ -205,9 +207,14 @@ cdef class VariantAlignment:
                             self.perform_retarget,
                             self.__target,
                             non_spurious_overhangs,
+                            self.window,
                             self.mapqthresh,
                             within,
                             self.retarget_cutoff,
+                            self.match_score,
+                            self.mismatch_penalty,
+                            self.gap_open_penalty,
+                            self.gap_extension_penalty,
                         )
                         if not res:
                             contig = Contig(self.__target, [], self.basequalthresh, self.mapqthresh)
@@ -264,8 +271,7 @@ cdef class VariantAlignment:
                     return self.__parse_pileup(contig=contig, retargeted=True)
 
                 # no target in this pileup
-                else:
-                    
+                else: 
                     return pileup, contig
 
         # soft-clip realn & SW realn
@@ -280,8 +286,7 @@ cdef class VariantAlignment:
                 self.gap_open_penalty,
                 self.gap_extension_penalty,
             )
-        
-        
+            
             contig = Contig(
                 self.__target,
                 preprocess_for_contig_construction(
@@ -298,8 +303,6 @@ cdef class VariantAlignment:
                 self.mapqthresh,
             )
         
-        
-        
         return pileup, contig
 
 
@@ -307,6 +310,20 @@ cdef class VariantAlignment:
         return self.__target
 
     
+    def fetch_reads(self, str how="target"):
+        
+        if how == "target":
+            return [read["read"] for read in self.__pileup if read["is_target"]]
+        elif how == "non_target":
+            pos, indel_len = self.target.pos, len(self.target.indel_seq)
+            margin = min(indel_len / 2, 5) if indel_len > 3 else indel_len
+            return [read["read"] for read in self.__pileup if count_as_non_target(read, pos, margin)]
+        elif how == "covering":
+            return [read["read"] for read in self.__pileup if read["is_covering"]]
+        else:
+            return None       
+            
+
     def count_alleles(
         self, bint fwrv=False, bint by_fragment=False, int qualitywindow=0, int qualitythresh=0
     ):
@@ -387,26 +404,42 @@ cdef class VariantAlignment:
 
     def to_complex(
         self,
-        snv_neigborhood=15,
-        indel_nearby=15,
+        snv_neighborhood=15,
+        indel_neighborhood=15,
         indel_repeat_thresh=5,
-        sequence_complexity_thresh=0.02,
+        sequence_complexity_thresh=0.01,
         dbsnp=None,
     ):
-        return hard_phase_nearby_variants(
+        return phase_nearby_variants(
             self.__target,
             self.contig,
             self.__pileup,
             self.mapqthresh,
             self.low_qual_frac_thresh,
             self.basequalthresh,
-            snv_neigborhood,
-            indel_nearby,
+            snv_neighborhood,
+            indel_neighborhood,
             indel_repeat_thresh,
             sequence_complexity_thresh,
             dbsnp,
         )
-
+     
+    def hard_phase(self):
+        return phase_nearby_variants(
+            self.__target,
+            self.contig,
+            self.__pileup,
+            self.mapqthresh,
+            self.low_qual_frac_thresh,
+            self.basequalthresh,
+            snv_neighborhood=15,
+            indel_neighborhood=15,
+            indel_repeat_thresh=5,
+            sequence_complexity_thresh=0.02,
+            dbsnp=None,
+            hard=True,
+        )
+     
 
 def is_quality_read(read, pos, qualitywindow, qualitythresh):
 
@@ -462,10 +495,11 @@ cdef list preprocess_for_contig_construction(
     if not pileup:
         return pileup
 
-    targetpileup = [read for read in pileup if read["is_target"]]
+    targetpileup = [read for read in pileup if read["is_target"] and not read["is_dirty"]]
+    
     if not targetpileup:
         return targetpileup
-
+    
     clipped_targetpileup = [
         read for read in targetpileup if "S" in read["cigar_string"]
     ]
@@ -473,18 +507,15 @@ cdef list preprocess_for_contig_construction(
         read for read in targetpileup if not "S" in read["cigar_string"] 
         and (read.get("lt_cigar", None) and read.get("rt_cigar", None)) 
     ]
-
     
     clips = len(clipped_targetpileup)
     nonclips = len(nonclipped_targetpileup)
 
     if target == orig_target and nonclips > 19:
         targetpileup = random.sample(nonclipped_targetpileup, 20)
+        targetpileup = [right_aligner(read, target) for read in targetpileup]
     else:
         targetpileup = sorted(targetpileup, key=partial(centrality, target_pos=target.pos))
-        
-        if len(targetpileup) > 2:
-            targetpileup = targetpileup[: min(20, int(len(targetpileup) / 1.25 ))]
         
         unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, window, unspliced=True) 
         unspl_aligner = make_aligner(unspl_ref_seq, match_score, mismatch_penalty)
@@ -517,16 +548,19 @@ cdef list preprocess_for_contig_construction(
             for read in targetpileup
         ]
         
-        updated_cigars = [read for read in targetpileup if read.get("cigar_updated", False)]
+        targetpileup = [read for read in targetpileup if read is not None and (read.get("lt_cigar", None) and read.get("rt_cigar", None))]
+
+        _targetpileup = [
+            read for read in targetpileup if read.get("cigar_updated", False) 
+        ]
         
-        #for read in updated_cigars:
-        #    if not read.get("lt_cigar", False):
-        #        print(read)
+        if len(_targetpileup) > 2:
+            _targetpileup = _targetpileup[: min(20, int(len(_targetpileup) / 1.25 ))]
         
-        if not updated_cigars:    
-            return targetpileup
+        if _targetpileup:    
+            targetpileup = _targetpileup
         else:
-            targetpileup = updated_cigars
+            return targetpileup
 
     return targetpileup
 
@@ -545,7 +579,8 @@ def update_spliced_read_info(
     ref_seq, lt_len = get_local_reference(orig_target, [read], window)
     aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
     ref_start = orig_target.pos + 1 - lt_len
-    return update_read_info(
+    
+    read = update_read_info(
         read, 
         target, 
         is_gapped_aln, 
@@ -556,3 +591,119 @@ def update_spliced_read_info(
         ref_start
     )
 
+    return right_aligner(read, target)
+
+
+def right_aligner(read, target):
+    """Right align indels around splice site"""
+    
+    if (
+        "N" not in read["cigar_string"] 
+        or (
+            "I" not in read["cigar_string"] 
+            and "D" not in read["cigar_string"]
+        )
+    ):
+        return read     
+   
+    cigar_lst = read["cigar_list"]
+    
+    query_pos = 0
+    ref_pos = read["read_start"]
+    new_cigar = []
+    prev_event = "A"
+    skip_next = False
+    for i, c in enumerate(cigar_lst):
+        event, event_len = c[-1], int(c[:-1])
+        
+        if event_len < 0:
+            return None
+
+        query_move = 0 if event in ("D", "N", "H", "P") else event_len
+        ref_move = 0 if event in ("I", "H", "P") else event_len
+
+        if event in ("I", "D") and prev_event == "N":
+            try:
+                nxt_c = cigar_lst[i + 1]
+                nxt_event, nxt_event_len = nxt_c[-1], int(nxt_c[:-1])
+                if nxt_event != "M":
+                    raise Exception
+            except: 
+                return None
+
+            chrom, reference = target.chrom, target.reference
+            padding_base = reference.fetch(chrom, ref_pos - 2, ref_pos - 1)
+            if event == "I":
+                ins_seq = read["read_seq"][query_pos: query_pos + event_len]
+                ref = padding_base
+                alt = padding_base + ins_seq
+            else:
+                del_seq = reference.fetch(chrom, ref_pos - 1, ref_pos - 1 + event_len)
+                ref = padding_base + del_seq
+                alt = padding_base
+            
+            right_aligned_vars = Variant(
+                                    chrom, 
+                                    ref_pos - 1, 
+                                    ref, 
+                                    alt, 
+                                    reference
+                                ).generate_equivalents()
+
+            diff = max(v.pos for v in right_aligned_vars) - ref_pos + 1
+            if diff > 0:
+                new_cigar += [str(diff) + "M", str(event_len) + event, str(nxt_event_len - diff) + "M"]    
+            else:
+                return None
+
+            ref_pos += query_move + nxt_event_len
+            query_pos += ref_move + nxt_event_len
+            skip_next = True
+
+        else:
+            if skip_next:
+                skip_next = False
+            else:
+                query_pos += query_move
+                ref_pos += ref_move
+                new_cigar.append(c)
+        
+        prev_event = event
+    
+    read["cigar_list"] = new_cigar
+    read["cigar_string"] = "".join(new_cigar)
+    
+    try:
+        if target in right_aligned_vars:
+            rt_aln_pos = target.pos + diff
+            read["lt_cigar"], read["rt_cigar"] = split_cigar(read["cigar_string"], rt_aln_pos, read["read_start"])
+            read["lt_flank"], read["rt_flank"] = split(
+                                                      read["read_seq"], 
+                                                      read["cigar_string"], 
+                                                      rt_aln_pos, 
+                                                      read["read_start"], 
+                                                      is_for_ref=False, 
+                                                      reverse=False
+                                                 )
+            read["lt_qual"], read["rt_qual"] = split(
+                                                    read["read_qual"], 
+                                                    read["cigar_string"], 
+                                                    rt_aln_pos, 
+                                                    read["read_start"], 
+                                                    is_for_ref=False, 
+                                                    reverse=False
+                                               )
+            read["lt_ref"], read["rt_ref"] = split(
+                                                    read["ref_seq"], 
+                                                    read["cigar_string"], 
+                                                    rt_aln_pos, read["aln_start"], 
+                                                    is_for_ref=True, 
+                                                    reverse=False
+                                             ) 
+            read["target_right_shifted"] = rt_aln_pos
+        else:
+            read["lt_cigar"], read["rt_cigar"] = split_cigar(read["cigar_string"], target.pos, read["read_start"])
+    except:
+        pass
+
+    return read
