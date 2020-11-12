@@ -322,7 +322,7 @@ def parse_read_by_mut_aln(mut_aln, contig, read, indel_type):
     return read
 
 
-def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, basequals=None):
+def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, report_snvs=False, basequals=None):
 
     genome_aln_pos -= 1
     ref_idx = ref_aln.reference_start
@@ -330,7 +330,7 @@ def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, basequals=None):
 
     lt_clipped = read_seq[:read_idx]
     
-    indels = []
+    indels, snvs = [], []
     for token in cigar_ptrn.findall(ref_aln.CIGAR):
         event, event_len = token[-1], int(token[:-1])
 
@@ -374,13 +374,30 @@ def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, basequals=None):
             indels.append(indel)
 
         else:
+            if report_snvs:
+                i = 0
+                while i < event_len:
+                     if ref_seq[ref_idx + i : ref_idx + i + 1] != read_seq[read_idx + i : read_idx + i + 1]:
+                         snv = {}
+                         snv["pos"] = genome_aln_pos + i + 1
+                         snv["ref"] = ref_seq[ref_idx + i : ref_idx + i + 1]
+                         snv["alt"] = read_seq[read_idx + i : read_idx + i + 1]
+                         
+                         snvs.append(snv)
+
+                     i += 1
+
             ref_idx += event_len
             read_idx += event_len
             genome_aln_pos += event_len
+            
 
     rt_clipped = read_seq[read_idx:]
     for indel in indels:
         indel["lt_clipped"] = lt_clipped
         indel["rt_clipped"] = rt_clipped
 
-    return indels
+    if report_snvs:
+        return indels, snvs
+    else:
+        return indels

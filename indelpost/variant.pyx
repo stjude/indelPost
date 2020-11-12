@@ -2,6 +2,7 @@
 # cython: profile=True
 
 from .utilities import *
+from .localn import make_aligner, align, findall_indels
 from pysam.libcfaidx cimport FastaFile
 from pysam.libcbcf cimport VariantFile
 
@@ -36,7 +37,7 @@ cdef class Variant:
         
     """
     def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
-        self._chrom = str(chrom)
+        self._chrom = chrom
         self.pos = pos
         self.ref = ref
         self.alt = alt
@@ -141,7 +142,7 @@ cdef class Variant:
         elif self.is_del:
             return self.ref[len(self.alt) :]
         else:
-            return None
+            return ""
 
 
     def __eq__(self, other):
@@ -387,3 +388,46 @@ cdef class Variant:
             return False
         
         return True
+
+
+    def decompose_complex_variant(self, match_score=2, mismatch_penalty=2, gap_open_penalty=3, gap_extension_penalty=1):
+        
+        if self.is_non_complex_indel():
+            return self
+        
+        var = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference).normalize()
+        
+        lt_pos = var.pos - 1
+        rt_pos = var.pos - 1 + len(var.ref)
+        
+        window = 100
+        mut_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos) + var.alt + self.reference.fetch(var.chrom, rt_pos, rt_pos + window)
+        ref_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos + window)
+
+        aln = align(make_aligner(ref_seq, match_score, mismatch_penalty), mut_seq, gap_open_penalty, gap_extension_penalty) 
+        
+        genome_aln_pos = lt_pos + 1 - window + aln.reference_start
+        
+        indels, snvs = findall_indels(aln, genome_aln_pos, ref_seq, mut_seq, report_snvs=True)
+        
+        variants = []
+        if indels:
+            for idl in indels:
+                padding_base = idl["lt_ref"][-1]
+                if idl["indel_type"] == "D":
+                    ref = padding_base + idl["del_seq"]
+                    alt = padding_base
+                else:
+                    ref = padding_base
+                    alt = padding_base + idl["indel_seq"]
+
+                variants.append(Variant(self.chrom, idl["pos"], ref, alt, self.reference))
+        
+        if snvs:
+            for snv in snvs:
+                variants.append(Variant(self.chrom, snv["pos"], snv["ref"], snv["alt"], self.reference))
+             
+        return variants
+
+        
+        

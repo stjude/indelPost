@@ -88,11 +88,17 @@ cdef class VariantAlignment:
         int auto_adjust_extension_penalty_thresh=20,
     ):
         
-        if not target.is_non_complex_indel():
-            raise Exception("Expected input is a non-complex indel")
-        
         self.target = target
-        self.__target = target.normalize()
+        
+        if not target.is_non_complex_indel():
+            #raise Exception("Expected input is a non-complex indel")
+            decomposed_variants = target.decompose_complex_variant(match_score, mismatch_penalty, gap_open_penalty, gap_extension_penalty)
+            decomposed_indels = [i for i in decomposed_variants if i.is_indel]
+            self.__target = max(decomposed_indels, key=lambda l : len(l.indel_seq))
+            self.target = self.__target
+        else:
+            self.__target = target.normalize()
+        
         self.bam = bam
         self.window = window
         self.exclude_duplicates = exclude_duplicates
@@ -528,7 +534,7 @@ cdef list preprocess_for_contig_construction(
         unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, window, unspliced=True) 
         unspl_aligner = make_aligner(unspl_ref_seq, match_score, mismatch_penalty)
         unspl_start = orig_target.pos + 1 - unspl_lt_len 
-
+        
         is_gapped_aln = False
         targetpileup = [
             update_spliced_read_info(
