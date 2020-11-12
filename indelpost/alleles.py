@@ -347,7 +347,8 @@ def variants_in_non_target_pileup(pileup, target, basequalthresh):
     mismatches = [
         var
         for var, cnt in Counter(mismatches).items()
-        if cnt > 2 and cnt / len(nontarget_pileup) > 0.15
+        if (cnt > 2 and cnt / len(nontarget_pileup) > 0.15)
+        or cnt > 5
     ]
     
     return set(indels + mismatches), mutation_frac

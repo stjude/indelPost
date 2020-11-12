@@ -1,6 +1,10 @@
 import re
 import random
 cimport cython
+
+from cpython cimport array
+import array
+
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
 
@@ -104,6 +108,7 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
             if not read.is_duplicate
             and not read.is_secondary
             and read.cigarstring
+            and read.reference_start
         ]
     else:
         reads = [
@@ -114,7 +119,6 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
         ]
 
     return reads
-
 
 
 cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaFile reference, int basequalthresh):
@@ -130,9 +134,13 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     read_start = aln_start - start_offset
 
     aln_end = read.reference_end  # do not add 1
-    end_offset = int(cigar_list[-1][:-1]) if cigar_list[-1].endswith("S") else 0
-    read_end = read.reference_end + end_offset
+    if aln_end is None:
+        aln_end = aln_start + sum(int(c[:-1]) for c in cigar_list if c[-1] in ("M", "N", "D", "=", "X"))
 
+    end_offset = int(cigar_list[-1][:-1]) if cigar_list[-1].endswith("S") else 0
+    
+    read_end = aln_end + end_offset
+    
     read_seq = read.query_sequence
     read_qual = read.query_qualities
     ref_seq = get_ref_seq(chrom, aln_start, aln_end, cigar_string, cigar_list, reference)
@@ -159,9 +167,9 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     }
 
     # base qual check
-    read_dict["low_qual_base_num"] = sum(q <= basequalthresh for q in read_qual)
+    read_dict["low_qual_base_num"] = count_lowqual_non_ref_bases(read_seq, ref_seq, read_qual, cigar_list, basequalthresh)
     
-    read_dict["is_dirty"] = read_dict["low_qual_base_num"] / len(read_seq) > 0.15
+    read_dict["is_dirty"] = sum(q <= basequalthresh for q in read_qual) / len(read_seq) > 0.15
     
     insertions, deletions = locate_indels(cigar_string, read_start)
     
@@ -254,6 +262,38 @@ cdef str get_ref_seq(
     
     return ref_seq
 
+cdef int count_lowqual_non_ref_bases(
+    str read_seq,
+    str ref_seq,
+    array.array quals,
+    list cigar_list,
+    int basequalthresh, 
+):
+    cdef int i = 0, j = 0, k = 0, cnt = 0, event_len = 0
+    cdef str event = "", cigar = "" ,
+    
+    for cigar in cigar_list:
+        event, event_len = cigar[-1], int(cigar[:-1]) 
+
+        if event in ("M", "=", "X"):
+            while k < event_len:
+                if read_seq[i] != ref_seq[j] and quals[i] < basequalthresh:
+                    cnt += 1
+                i += 1
+                j += 1
+                k += 1
+            k = 0
+        elif event in ("I", "S"):
+            while k < event_len:
+                if quals[i] < basequalthresh:      
+                    cnt += 1
+                i += 1
+                k += 1
+            k = 0
+        elif event == "D":
+            j += event_len
+    
+    return cnt 
 
 cdef tuple leftalign_indel_read(
     str chrom,
@@ -544,8 +584,6 @@ def retarget(
         if not read_dict["is_reference_seq"]
         and read_dict["is_covering"]
         and read_dict["mapq"] > mapq4retarget
-        and read_dict["low_qual_base_num"] < 4
-        and not read_dict["is_dirty"]
     ]
     
     if not non_refs:
@@ -559,7 +597,7 @@ def retarget(
             for gapped_aln in gapped_alns:
                 candidates.append(gapped_aln[-1])
                 candidate_reads.append(read_dict)
-
+    
     cutoff = (
         min(retargetcutoff + 0.2, 1.0) if len(target.indel_seq) < 3 else retargetcutoff
     )
@@ -570,29 +608,39 @@ def retarget(
         best_matches = get_close_matches(
             target.indel_seq, candidate_seqs, n=2, cutoff=cutoff
         )
-
+    
     # check by realn if no gapped alignments or no good gapped alignmetns
     if not candidates or not best_matches:
         is_gapped_aln = False
+        
+        tmp_non_refs = non_refs.copy()
+        
+        non_refs = [
+            read_dict 
+            for read_dict 
+            in non_refs 
+            if read_dict["low_qual_base_num"] < 6
+            and not read_dict["is_dirty"]
+        ]
+
+        if not non_refs:
+            non_refs = [read_dict for read_dict in tmp_non_refs if not read_dict["is_dirty"]]
 
         ref_starts = []
         ref_alns = []
+        ref_seqs = []
         for read in non_refs:
-            ref_seq, lt_len = get_local_reference(target, [read], window)        
+            ref_seq, lt_len = get_local_reference(target, [read], window)
+            ref_seqs.append(ref_seq)        
             aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
             ref_alns.append(align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty))
             ref_starts.append(target.pos + 1 - lt_len)
         
-        #ref_alns = [
-        #    align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty)
-        #    for read in non_refs
-        #]
-        
-        #ref_start = target.pos + 1 - lt_len
-        for read, aln, ref_start in zip(non_refs, ref_alns, ref_starts):
+        for read, aln, ref_seq, ref_start in zip(non_refs, ref_alns, ref_seqs, ref_starts):
             genome_aln_pos = ref_start + aln.reference_start
             
             gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
+            
             if gap_cnt < 4:
                 indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
                 indels = [
@@ -613,15 +661,17 @@ def retarget(
     
     if not candidates:
         return None
-
+    elif len(target.indel_seq) < 2 and not target in candidates:
+        return None
+    
     u_candidates = to_flat_list([var.generate_equivalents() for var in set(candidates)])
     u_candidates.sort(key=lambda x: abs(x.pos - target.pos))
-    candidate_seqs = [var.ref[0] + var.indel_seq for var in u_candidates]
-
+    candidate_seqs = [var.indel_seq for var in u_candidates]
+    
     best_matches = get_close_matches(
-        target.ref[0] + target.indel_seq, candidate_seqs, n=2, cutoff=cutoff
+        target.indel_seq, candidate_seqs, n=2, cutoff=cutoff
     )
-
+    
     if best_matches:
         idx = [i for i, seq in enumerate(candidate_seqs) if seq in best_matches]
         

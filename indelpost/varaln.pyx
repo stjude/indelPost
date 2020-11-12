@@ -58,7 +58,7 @@ cdef class VariantAlignment:
         retarggeting will be performed within the input indel position +/- retarget_window. Default to 30.
     """
     cdef Variant target, __target
-    cdef AlignmentFile bam
+    cdef readonly AlignmentFile bam
     cdef int window, retarget_window, mapqthresh
     cdef int downsamplethresh, basequalthresh, match_score
     cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
@@ -184,7 +184,7 @@ cdef class VariantAlignment:
             self.is_spurious_overhang = False
             if contig.failed:
 
-                within = min(self.retarget_window, len(self.__target.indel_seq) * 3)
+                within = self.retarget_window
                 
                 ans = check_overhangs(pileup)
                 if ans:
@@ -304,7 +304,15 @@ cdef class VariantAlignment:
             )
         
         return pileup, contig
+    
+    def __eq__(self, other):
+        condition1 = (self.target_indel() == other.target_indel())
+        condition2 = (self.bam.filename == other.bam.filename)
+        return any((condition1, condition2))
 
+    def __hash__(self):
+        hashable = (self.target_indel(), self.bam.filename)
+        return hash(hashable)
 
     def target_indel(self):
         return self.__target

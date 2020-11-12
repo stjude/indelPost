@@ -393,7 +393,13 @@ cdef tuple split(
     return lt, rt
 
 
-cpdef tuple get_local_reference(Variant target, list pileup, int window, bint unspliced=False):
+cpdef tuple get_local_reference(
+    Variant target, 
+    list pileup, 
+    int window, 
+    bint unspliced=False,
+    bint splice_pattern_only=False,
+):
 
     cdef str span
     cdef tuple ptrn 
@@ -407,6 +413,8 @@ cpdef tuple get_local_reference(Variant target, list pileup, int window, bint un
    
     ref_len = reference.get_reference_length(chrom)
     
+    cdef list spl_ptrn = []
+
     if splice_patterns:
         lt_patterns = [ptrn[0] for ptrn in splice_patterns if ptrn[0]]
         if lt_patterns:
@@ -438,15 +446,18 @@ cpdef tuple get_local_reference(Variant target, list pileup, int window, bint un
                 lt_end = max(0, x - window * 2)
                 local_reference += reference.fetch(chrom, lt_end, x - 1)
                 rt_end = x - 1
+                spl_ptrn.append((x + 1, rt_end))
             elif i % 2 == 1 and i != last_idx:
                 local_reference += reference.fetch(chrom, x, spl_pos[i+1] - 1)
                 rt_end = spl_pos[i+1] - 1
+                spl_ptrn.append((x + 1, rt_end))
             elif i % 2 == 0:
                 pass
             elif i == last_idx:
                 rt_end = min(x + window * 2, ref_len)
                 local_reference += reference.fetch(chrom, x, rt_end)
-            
+                spl_ptrn.append((x + 1, rt_end))
+
             if pos <= rt_end and not first_pass:
                 left_len = len(local_reference) - (rt_end - pos)
                 first_pass = True
@@ -455,4 +466,7 @@ cpdef tuple get_local_reference(Variant target, list pileup, int window, bint un
         local_reference = reference.fetch(chrom, max(0, pos - window * 3), min(pos + window * 3, ref_len))
         left_len = pos - max(0, pos - window * 3)
     
+    if splice_pattern_only:
+        return tuple(spl_ptrn)
+
     return local_reference, left_len    

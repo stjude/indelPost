@@ -329,7 +329,7 @@ def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, basequals=None):
     read_idx = ref_aln.read_start
 
     lt_clipped = read_seq[:read_idx]
-
+    
     indels = []
     for token in cigar_ptrn.findall(ref_aln.CIGAR):
         event, event_len = token[-1], int(token[:-1])

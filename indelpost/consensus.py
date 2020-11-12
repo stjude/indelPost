@@ -443,13 +443,13 @@ def is_compatible(query, subject, indel_type, partial_match=True):
         subject_rt_flank,
         subject_rt_scores,
     ) = (
-        subject.lt_consensus_seq,
-        subject.lt_consensus_scores,
+        subject.lt_target_block_consensus_seq,
+        subject.lt_target_block_consensus_scores,
         subject.indel_seq,
-        subject.rt_consensus_seq,
-        subject.rt_consensus_scores,
+        subject.rt_target_block_consensus_seq,
+        subject.rt_target_block_consensus_scores,
     )
-
+    
     # check flanking sequences for similarity
     lt_len = min(len(query_lt_flank), len(subject_lt_flank))
     rt_len = min(len(query_rt_flank), len(subject_rt_flank))

@@ -38,6 +38,8 @@ cdef class Contig:
         targetpileup = [read for read in self.pileup if read is not None and read["is_target"]]
         self.mapq = 0
 
+        self.splice_pattern = get_local_reference(self.target, targetpileup, window=50, unspliced=False, splice_pattern_only=True)
+        
         self.is_target_right_aligned = sum(read.get("target_right_aligned", 0) for read in targetpileup)
         
         if not targetpileup:
@@ -57,28 +59,57 @@ cdef class Contig:
         self.__index_by_genome_coord(lt_consensus[0], rt_consensus[0])
         
         self.lt_reference_seq = ""
+        self.lt_target_block_reference_seq = ""
         self.lt_consensus_seq = ""
+        self.lt_target_block_consensus_seq = ""
         self.lt_consensus_scores = []
+        self.lt_target_block_consensus_scores = []
+
         self.indel_seq = ""
+        
         self.rt_reference_seq = ""
+        self.rt_target_block_reference_seq = ""
         self.rt_consensus_seq = ""
+        self.rt_target_block_consensus_seq = ""
         self.rt_consensus_scores = []
+        self.rt_target_block_consensus_scores = []
+
+        exon_start, exon_end = -np.inf, np.inf
+        if self.splice_pattern:
+            for exon in self.splice_pattern:
+                if exon[0] <= self.target.pos <= exon[1]:
+                    exon_start, exon_end = exon[0], exon[1]
         
         for k, v in self.contig_dict.items():
             if k < self.target.pos:
                 self.lt_reference_seq += v[0]        
                 self.lt_consensus_seq += v[1]
                 self.lt_consensus_scores.extend([v[2]] * len(v[1]))
+                if exon_start <= k:
+                    self.lt_target_block_reference_seq += v[0]
+                    self.lt_target_block_consensus_seq += v[1]
+                    self.lt_target_block_consensus_scores.extend([v[2]] * len(v[1]))    
+
             elif k == self.target.pos:
                 self.lt_reference_seq += v[0][0]
+                self.lt_target_block_reference_seq += v[0][0]
+
                 self.lt_consensus_seq += v[1][0]
+                self.lt_target_block_consensus_seq += v[1][0]
+
                 self.lt_consensus_scores.append(v[2])
+                self.lt_target_block_consensus_scores.extend([v[2]])
+
                 self.indel_seq = self.target.indel_seq
             elif k > self.target.pos:
                 self.rt_reference_seq += v[0]
                 self.rt_consensus_seq += v[1]
                 self.rt_consensus_scores.extend([v[2]] * len(v[1]))
-        
+                if k <= exon_end:
+                    self.rt_target_block_reference_seq += v[0]
+                    self.rt_target_block_consensus_seq += v[1]
+                    self.rt_target_block_consensus_scores.extend([v[2]] * len(v[1]))
+                     
         self.start = lt_consensus[1]
         self.end = rt_consensus[1]
 

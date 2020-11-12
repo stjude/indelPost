@@ -121,7 +121,7 @@ def is_target_by_sftclp_split(read, pos, indel_type, indel_seq, contig, slided=F
     if read["is_target"] or not read["softclip_pattern"]:
         return read
 
-    read = split_softclipped_read(read, pos, indel_type, len(indel_seq))
+    read = split_softclipped_read(read, pos, indel_type, indel_seq)
 
     read["is_target"] = is_compatible(read, contig, indel_type)
 
@@ -145,11 +145,15 @@ def is_target_by_sftclp_split(read, pos, indel_type, indel_seq, contig, slided=F
     return read
 
 
-def split_softclipped_read(read, pos, indel_type, indel_len):
+def split_softclipped_read(read, pos, indel_type, indel_seq):
     
+    indel_len = len(indel_seq)
     cigar_string = read["cigar_string"]
     reverse = True if read["softclip_pattern"] == "leading" else False
     string_pos = read["read_end"] if reverse else read["read_start"]
+
+    if indel_type == "D" and reverse:
+        pos += indel_len
 
     lt_flank, rt_flank = split(
         read["read_seq"],
@@ -173,19 +177,21 @@ def split_softclipped_read(read, pos, indel_type, indel_len):
         mid_seq, rt_flank = rt_flank[:indel_len], rt_flank[indel_len:]
         read["del_seq"] = ""
     else:
-        del_pos = get_end_pos(read["read_start"], lt_flank, cigar_string)
-        aln_pos = read["aln_end"] if reverse else read["aln_start"]
+        read["del_seq"] = indel_seq
+        #del_pos = get_end_pos(read["read_start"], lt_flank, cigar_string)
+        #del_pos = pos
+        #aln_pos = read["aln_end"] if reverse else read["aln_start"]
         
-        lt_ref, rt_ref = split(
-            read["ref_seq"],
-            cigar_string,
-            del_pos,
-            aln_pos,
-            is_for_ref=True,
-            reverse=reverse,
-        )
+        #lt_ref, rt_ref = split(
+        #    read["ref_seq"],
+        #    cigar_string,
+        #    del_pos,
+        #    aln_pos,
+        #    is_for_ref=True,
+        #    reverse=reverse,
+        #)
         
-        read["del_seq"] = rt_ref[: indel_len]
+        #read["del_seq"] = "GAATTAAGAGAAGCA"
 
     read["lt_flank"] = lt_flank
     read["lt_qual"] = lt_qual
