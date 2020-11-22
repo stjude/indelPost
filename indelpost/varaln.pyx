@@ -63,7 +63,7 @@ cdef class VariantAlignment:
     cdef int downsamplethresh, basequalthresh, match_score
     cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
     cdef float retarget_cutoff, __sample_factor, low_qual_frac_thresh
-    cdef bint exclude_duplicates, retarget, perform_retarget
+    cdef bint exclude_duplicates, retarget, perform_retarget, auto_adjust_extension_penalty
     cdef list __pileup
     cdef readonly is_spurious_overhang
     cdef readonly Contig contig
@@ -85,7 +85,7 @@ cdef class VariantAlignment:
         int mismatch_penalty=2,
         int gap_open_penalty=3,
         int gap_extension_penalty=1,
-        int auto_adjust_extension_penalty_thresh=20,
+        bint auto_adjust_extension_penalty=True,
     ):
         
         self.target = target
@@ -112,13 +112,7 @@ cdef class VariantAlignment:
         self.match_score = match_score
         self.mismatch_penalty = mismatch_penalty
         self.gap_open_penalty = gap_open_penalty
-
-        if (auto_adjust_extension_penalty_thresh <= 0 or 
-            len(target.indel_seq) <= auto_adjust_extension_penalty_thresh
-        ):    
-            self.gap_extension_penalty = gap_extension_penalty
-        else:
-            self.gap_extension_penalty = 0
+        self.auto_adjust_extension_penalty = auto_adjust_extension_penalty
 
         self.__pileup, self.contig = self.__parse_pileup()
     
@@ -189,8 +183,18 @@ cdef class VariantAlignment:
 
             self.is_spurious_overhang = False
             if contig.failed:
-
                 within = self.retarget_window
+                
+                # to search optimum ext penal
+                res = None
+                h = 0
+                if self.auto_adjust_extension_penalty:
+                    if len(self.__target.indel_seq) < 20:
+                        grid = (1, 0, 2, 3, 4, 5)
+                    else:
+                        grid = (0, 1, 2, 3, 4, 5)
+                else:
+                    grid = (self.gap_extension_penalty)
                 
                 ans = check_overhangs(pileup)
                 if ans:
@@ -209,10 +213,35 @@ cdef class VariantAlignment:
                         self.is_spurious_overhang = True
                         return pileup, contig
                     else:
+                        while not res and h < len(grid):    
+                            res = retarget(
+                                self.perform_retarget,
+                                self.__target,
+                                non_spurious_overhangs,
+                                self.window,
+                                self.mapqthresh,
+                                within,
+                                self.retarget_cutoff,
+                                self.match_score,
+                                self.mismatch_penalty,
+                                self.gap_open_penalty,
+                                self.gap_extension_penalty,
+                            )
+                            
+                            if res:
+                                self.gap_extension_penalty = grid[h]
+                            h += 1
+
+                        if not res:
+                            contig = Contig(self.__target, [], self.basequalthresh, self.mapqthresh)
+                            self.is_spurious_overhang = True
+                            return pileup, contig
+                else:
+                    while not res and h < len(grid):
                         res = retarget(
                             self.perform_retarget,
                             self.__target,
-                            non_spurious_overhangs,
+                            pileup,
                             self.window,
                             self.mapqthresh,
                             within,
@@ -220,27 +249,13 @@ cdef class VariantAlignment:
                             self.match_score,
                             self.mismatch_penalty,
                             self.gap_open_penalty,
-                            self.gap_extension_penalty,
+                            grid[h],
                         )
-                        if not res:
-                            contig = Contig(self.__target, [], self.basequalthresh, self.mapqthresh)
-                            self.is_spurious_overhang = True
-                            return pileup, contig
-                else:
-                    res = retarget(
-                        self.perform_retarget,
-                        self.__target,
-                        pileup,
-                        self.window,
-                        self.mapqthresh,
-                        within,
-                        self.retarget_cutoff,
-                        self.match_score,
-                        self.mismatch_penalty,
-                        self.gap_open_penalty,
-                        self.gap_extension_penalty,
-                    )
-
+                        
+                        if res:
+                            self.gap_extension_penalty = grid[h]
+                        h+= 1
+                
                 # if retargeted successfully -> make template based on the retarget
                 if res:
                     self.__target, retarget_reads = res[0], res[1]

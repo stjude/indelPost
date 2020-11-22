@@ -263,38 +263,6 @@ cdef str get_ref_seq(
     
     return ref_seq
 
-#cdef int count_lowqual_non_ref_bases(
-#    str read_seq,
-#    str ref_seq,
-#    array.array quals,
-#    list cigar_list,
-#    int basequalthresh, 
-#):
-#    cdef int i = 0, j = 0, k = 0, cnt = 0, event_len = 0
-#    cdef str event = "", cigar = "" ,
-#    
-#    for cigar in cigar_list:
-#        event, event_len = cigar[-1], int(cigar[:-1]) 
-#
-#        if event in ("M", "=", "X"):
-#            while k < event_len:
-#                if read_seq[i] != ref_seq[j] and quals[i] < basequalthresh:
-#                    cnt += 1
-#                i += 1
-#                j += 1
-#                k += 1
-#            k = 0
-#        elif event in ("I", "S"):
-#            while k < event_len:
-#                if quals[i] < basequalthresh:      
-#                    cnt += 1
-#                i += 1
-#                k += 1
-#            k = 0
-#        elif event == "D":
-#            j += event_len
-#    
-#    return cnt 
 
 cdef tuple leftalign_indel_read(
     str chrom,
@@ -577,7 +545,7 @@ def retarget(
 
     target_seq, target_type = target.indel_seq, target.variant_type
 
-    ref_seq, lt_len = get_local_reference(target, pileup, window)
+    #ref_seq, lt_len = get_local_reference(target, pileup, window)
 
     non_refs = [
         read_dict
