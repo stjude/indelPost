@@ -53,53 +53,15 @@ def make_consensus(target, targetpileup, basequalthresh):
             lt_indexed.append(lt)
             rt_indexed.append(rt)
         except:
-            traceback.print_exc()
-    
+            #traceback.print_exc() 
+            #for debugging
+            pass
+
     if lt_indexed and rt_indexed:
         lt_consensus = consensus_data(lt_indexed, True, basequalthresh)
         rt_consensus = consensus_data(rt_indexed, False, basequalthresh)
         
         return lt_consensus, rt_consensus
-
-    #lt_indexed = [
-    #    index_bases(
-    #        read["read_start"],
-    #        target_pos,
-    #        target_type,
-    #        target_len,
-    #        read["lt_cigar"],
-    #        read["lt_flank"],
-    #        read["lt_ref"],
-    #        read["lt_qual"],
-    #    )
-    #    for read in targetpileup
-    #]
-
-    #rt_indexed = [
-    #    index_bases(
-    #        read["read_start"],
-    #        target_pos,
-    #        target_type,
-    #        target_len,
-    #        read["rt_cigar"],
-    #        read["rt_flank"],
-    #        read["rt_ref"],
-    #        read["rt_qual"],
-    #        left_padding=(
-    #            read["lt_ref"][-1],
-    #            read["lt_flank"][-1],
-    #            read["lt_qual"][-1],
-    #            target.indel_seq,
-    #        ),
-    #        left=False,
-    #    )
-    #    for read in targetpileup
-    #]
-
-    #lt_consensus = consensus_data(lt_indexed, True, basequalthresh)
-    #rt_consensus = consensus_data(rt_indexed, False, basequalthresh)
-
-    #return lt_consensus, rt_consensus
 
 
 def index_bases(

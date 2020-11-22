@@ -7,7 +7,7 @@ from ssw import SSW
 from .consensus import is_compatible
 from .utilities import get_mapped_subreads, get_end_pos
 
-from indelpost.utilities cimport split
+from indelpost.utilities cimport split, count_lowqual_non_ref_bases
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
@@ -20,6 +20,7 @@ def find_by_smith_waterman_realn(
     mismatch_penalty,
     gap_open_penalty,
     gap_extension_penalty,
+    basequalthresh,
     mapq_lim=1,
 ):
     """Annotate if reads contain target indel
@@ -37,7 +38,7 @@ def find_by_smith_waterman_realn(
     mut_ref_lt, mut_ref_mid, mut_ref_rt = contig.get_contig_seq(split=True)
     ref_ref = contig.get_reference_seq()
     mut_ref = mut_ref_lt + mut_ref_mid + mut_ref_rt
-
+    
     mut_aligner = make_aligner(mut_ref, match_score, mismatch_penalty)
     ref_aligner = make_aligner(ref_ref, match_score, mismatch_penalty)
 
@@ -58,6 +59,7 @@ def find_by_smith_waterman_realn(
             gap_open_penalty,
             gap_extension_penalty,
             indel_type,
+            basequalthresh,
             mapq_lim,
         )
         for read in pileup
@@ -117,11 +119,7 @@ def findall_mismatches(read, end_trim=0):
             reverse=False,
         )
 
-        try:
-            mapped_seq = lt_seq[-1] + rt_seq[: span - 1]
-        except:
-            print(subread, read["read_name"], read["is_reverse"], cigarstring, start, lt_seq, rt_seq, span)
-        
+        mapped_seq = lt_seq[-1] + rt_seq[: span - 1]
         mapped_qual = [lt_qual[-1]] + list(rt_qual[: span - 1])
         mapped_ref = lt_ref[-1] + rt_ref[: span - 1]
 
@@ -188,6 +186,7 @@ def is_target_by_ssw(
     gap_open_penalty,
     gap_extension_penalty,
     indel_type,
+    basequalthresh,
     mapq_lim,
     mapped_base_cnt_thresh=40,
     allow_mismatches=2,
@@ -202,24 +201,40 @@ def is_target_by_ssw(
         return read
 
     read_seq = read["read_seq"]
-    mut_aln = align(mut_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
-    ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
 
+    # forced to align by setting gap_open_penalty=len(read_seq)
+    mut_aln = align(mut_aligner, read_seq, len(read_seq), gap_extension_penalty)
+    mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
+    
+    ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
+    
     if not target_indel.count_repeats():
-        mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
         if len(mut_cigar_list) == 1:
             mapped_len = int(mut_cigar_list[0][:-1])
-            if mut_aln.reference_start < len(mut_ref_lt) < mapped_len:
+            mut_ref = mut_ref_lt + mut_ref_mid + mut_ref_rt
+            lq_mismatch_cnt = count_lowqual_non_ref_bases(
+                                read_seq[mut_aln.read_start : (mut_aln.read_end + 1)],
+                                mut_ref[mut_aln.reference_start : (mut_aln.reference_end + 1)],
+                                read["read_qual"][mut_aln.read_start : (mut_aln.read_end + 1)],
+                                mut_cigar_list,
+                                basequalthresh,
+                              ) 
+            
+            if mut_aln.reference_start < len(mut_ref_lt) and (len(mut_ref_lt) -  mut_aln.reference_start) + len(mut_ref_mid) <  mapped_len:
                 allow_mismatches = (
                     0 if len(target_indel.indel_seq) < 4 else allow_mismatches
                 )
-                if mut_aln.optimal_score >= match_score * mapped_len - (
+                
+                # doesn't penalize low qual mismatches
+                if mut_aln.optimal_score + lq_mismatch_cnt * match_score >= match_score * mapped_len - (
                     allow_mismatches * mismatch_penalty
                 ):
                     read["is_target"] = True
                     return read
-
-    if not indel_type in ref_aln.CIGAR:
+    
+    if len(mut_cigar_list) == 1:
+        pass
+    elif not indel_type in ref_aln.CIGAR:
         return read
 
     # lower score against mut_ref alignment
@@ -231,7 +246,7 @@ def is_target_by_ssw(
     mapped_bases = sum(
         [int(c[:-1]) for c in cigar_ptrn.findall(mut_aln.CIGAR) if "M" in c]
     )
-    if mapped_bases < mapped_base_cnt_thresh:
+    if mapped_bases <= mapped_base_cnt_thresh:
         read["is_target"] = False
         return read
 

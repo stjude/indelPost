@@ -393,7 +393,7 @@ cdef class Variant:
     def decompose_complex_variant(self, match_score=2, mismatch_penalty=2, gap_open_penalty=3, gap_extension_penalty=1):
         
         if self.is_non_complex_indel():
-            return self
+            return [self]
         
         var = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference).normalize()
         

@@ -291,6 +291,7 @@ cdef class VariantAlignment:
                 self.mismatch_penalty,
                 self.gap_open_penalty,
                 self.gap_extension_penalty,
+                self.basequalthresh
             )
             
             contig = Contig(

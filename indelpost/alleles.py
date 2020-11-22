@@ -258,7 +258,7 @@ def calc_peak(indexed_contig, mismatches, target, snv_neighborhood, left):
     else:
         loci = [k for k, v in indexed_contig.items() if k > target_pos]
         snv_loci = [var.pos for var in mismatches if var.pos > target_pos]
-
+    
     score, gain = 0.0, 1.0
     peak_locus = -np.inf if left else np.inf
 
@@ -266,12 +266,21 @@ def calc_peak(indexed_contig, mismatches, target, snv_neighborhood, left):
         return score, peak_locus
 
     indel_len = len(target.indel_seq)
+    scores = []
     for i, locus in enumerate(loci):
 
         if locus in snv_loci:
             score += gain
         else:
             score += loss(i, indel_len, snv_neighborhood)
+        
+        scores.append(score)
+    
+    peak_score = max(scores)
+    if peak_score > 0.0:
+        peak_idx = [i for i, j in enumerate(scores) if j == peak_score][-1]
+        peak_locus = loci[peak_idx]
+        score = peak_score
 
     return score, peak_locus
 

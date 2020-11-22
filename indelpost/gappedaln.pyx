@@ -251,6 +251,7 @@ def seek_larger_gapped_aln(
     else:
         ref_seq, lt_len = get_local_reference(target, [read], window, unspliced=True)
 
+    orig_gap_extension_penalty = gap_extension_penalty
     gap_extension_penalty = (
         0 if abs(center_score) > 0.35 and with_end_mut else gap_extension_penalty
     )
@@ -263,9 +264,9 @@ def seek_larger_gapped_aln(
 
     genome_aln_pos = target.pos + 1 - lt_len + aln.reference_start
 
-    indels = findall_indels(aln, genome_aln_pos, ref_seq, read_seq)
-    if not indels:
-        return target, gap_extension_penalty
+    indels, mismatches = findall_indels(aln, genome_aln_pos, ref_seq, read_seq, report_snvs=True)
+    if len(indels) != 1 or mismatches:
+        return target, orig_gap_extension_penalty
 
     closest = min([abs(target.pos - indel["pos"]) for indel in indels])
     if "N" in read["cigar_string"] and closest > 3:
