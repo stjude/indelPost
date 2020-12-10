@@ -76,7 +76,7 @@ cdef class VariantAlignment:
         bint exclude_duplicates=True, 
         bint retarget=True,
         int retarget_window=30,
-        float retarget_cutoff=0.6,
+        float retarget_cutoff=0.7,
         int mapqthresh=20,
         float low_qual_frac_thresh=0.2,
         int downsamplethresh=30000,
@@ -112,8 +112,8 @@ cdef class VariantAlignment:
         self.match_score = match_score
         self.mismatch_penalty = mismatch_penalty
         self.gap_open_penalty = gap_open_penalty
+        self.gap_extension_penalty = gap_extension_penalty
         self.auto_adjust_extension_penalty = auto_adjust_extension_penalty
-
         self.__pileup, self.contig = self.__parse_pileup()
     
     cdef __parse_pileup(self, Contig contig=None, bint retargeted=False):
@@ -189,12 +189,22 @@ cdef class VariantAlignment:
                 res = None
                 h = 0
                 if self.auto_adjust_extension_penalty:
-                    if len(self.__target.indel_seq) < 20:
-                        grid = (1, 0, 2, 3, 4, 5)
+                    if (self.gap_open_penalty, self.gap_extension_penalty) != (3, 1):
+                        if len(self.__target.indel_seq) < 20:
+                            grid = [(self.gap_open_penalty, self.gap_extension_penalty),  
+                                    (3, 0), (4, 0), (5, 0), (3, 1), (4, 1), (5, 1)
+                            ]
+                        else:
+                            grid = [(self.gap_open_penalty, self.gap_extension_penalty),
+                                    (3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (5, 1)
+                            ]
                     else:
-                        grid = (0, 1, 2, 3, 4, 5)
+                         if len(self.__target.indel_seq) < 20:
+                            grid = [(3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (4, 0)]
+                         else:
+                            grid = [(3, 0), (3, 1), (5, 1), (5, 0), (4, 1), (4, 0)] 
                 else:
-                    grid = (self.gap_extension_penalty)
+                    grid = [(self.gap_open_penalty, self.gap_extension_penalty)]
                 
                 ans = check_overhangs(pileup)
                 if ans:
@@ -224,12 +234,12 @@ cdef class VariantAlignment:
                                 self.retarget_cutoff,
                                 self.match_score,
                                 self.mismatch_penalty,
-                                self.gap_open_penalty,
-                                self.gap_extension_penalty,
+                                grid[h][0],
+                                grid[h][1],
                             )
                             
                             if res:
-                                self.gap_extension_penalty = grid[h]
+                                self.gap_open_penalty, self.gap_extension_penalty = grid[h][0], grid[h][1]
                             h += 1
 
                         if not res:
@@ -248,15 +258,16 @@ cdef class VariantAlignment:
                             self.retarget_cutoff,
                             self.match_score,
                             self.mismatch_penalty,
-                            self.gap_open_penalty,
-                            grid[h],
+                            grid[h][0],
+                            grid[h][1],
                         )
                         
                         if res:
-                            self.gap_extension_penalty = grid[h]
+                            self.gap_open_penalty, self.gap_extension_penalty = grid[h][0], grid[h][1]
+                        
                         h+= 1
                 
-                # if retargeted successfully -> make template based on the retarget
+                # if retargeted successfully -> make contig based on the retarget
                 if res:
                     self.__target, retarget_reads = res[0], res[1]
                     
@@ -282,7 +293,7 @@ cdef class VariantAlignment:
                             self.match_score,
                             self.mismatch_penalty,
                             self.gap_open_penalty,
-                            exptension_penalty_used,
+                            self.gap_extension_penalty,
                         ),
                         self.basequalthresh,
                         self.mapqthresh
@@ -437,7 +448,7 @@ cdef class VariantAlignment:
         snv_neighborhood=15,
         indel_neighborhood=15,
         indel_repeat_thresh=5,
-        sequence_complexity_thresh=0.01,
+        sequence_complexity_thresh=0.001,
         dbsnp=None,
     ):
         return phase_nearby_variants(

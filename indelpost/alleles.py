@@ -28,7 +28,9 @@ def phase_nearby_variants(
         if contig.failed:
             return target
         else:
-            return greedy_phasing(target, contig.contig_dict)
+            variants_list = []
+            cleaned, variant_list = precleaning(contig.contig_dict, variants_list, target.pos, pileup, limit_to_target_exon=True)
+            return greedy_phasing(target, cleaned)
     
     if contig.failed or contig.mapq < mapq_thresh or contig.is_target_right_aligned:
         return None
@@ -107,7 +109,6 @@ def phase_nearby_variants(
                 indel_neighborhood = int(indel_neighborhood / 2)
 
             remove_common_substrings(indexed_contig, target.pos, indel_neighborhood)
-    
      
     cvar = greedy_phasing(target, indexed_contig)
     
@@ -117,7 +118,7 @@ def phase_nearby_variants(
         and SequenceMatcher(None, cvar.ref, cvar.alt).ratio() > 0.75
     ):
         return None
-
+    
     if cvar != target:
         return cvar
     else:
@@ -152,7 +153,7 @@ def seq_complexity(contig, snv_neighborhood, indel_neighorhood):
     )
 
 
-def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
+def precleaning(genome_indexed_contig, variants_list, target_pos, pileup, limit_to_target_exon=True):
     lt_loci, rt_loci = [], []
 
     # filter low qual loci
@@ -179,23 +180,24 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup):
     lt_lim = max(lt_loci) if lt_loci else -np.inf
     rt_lim = min(rt_loci) if rt_loci else np.inf
 
-    # within the same exon
-    spliced_subreads = [
-        read["covering_subread"]
-        for read in pileup
-        if read["is_target"] and read["covering_subread"]
-    ]
+    if limit_to_target_exon:
+        # within the same exon
+        spliced_subreads = [
+            read["covering_subread"]
+            for read in pileup
+            if read["is_target"] and read["covering_subread"]
+        ]
 
-    if spliced_subreads:
-        lt_exon_end = min([subread[0] for subread in spliced_subreads])
-        rt_exon_end = max([subread[1] for subread in spliced_subreads])
-        lt_lim = max(lt_lim, lt_exon_end)
-        rt_lim = min(rt_lim, rt_exon_end)
+        if spliced_subreads:
+            lt_exon_end = min([subread[0] for subread in spliced_subreads])
+            rt_exon_end = max([subread[1] for subread in spliced_subreads])
+            lt_lim = max(lt_lim, lt_exon_end)
+            rt_lim = min(rt_lim, rt_exon_end)
 
-    tmp = genome_indexed_contig.copy()
-    for k, v in genome_indexed_contig.items():
-        if k <= lt_lim or rt_lim <= k:
-            del tmp[k]
+        tmp = genome_indexed_contig.copy()
+        for k, v in genome_indexed_contig.items():
+            if k <= lt_lim or rt_lim <= k:
+                del tmp[k]
 
     variants_list = [var for var in variants_list if lt_lim < var.pos < rt_lim]
 
@@ -229,7 +231,7 @@ def locate_mismatch_cluster_peaks(
     rt_peak, rt_peak_pos = calc_peak(
         indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=False
     )
-
+    
     if lt_peak > 0:
         if rt_peak > 0 or rt_peak_pos == np.inf:
             pass
@@ -414,7 +416,12 @@ def get_freq(freqinfo):
 
 def remove_deletables(indexed_contig, lt_end, target_pos, rt_end):
     tmp = indexed_contig.copy()
-
+    
+    #if lt_end == -np.inf:
+    #    lt_end = target_pos - 1
+    #if rt_end == np.inf:
+    #    rt_end = target_pos + 1 
+    
     for k, v in tmp.items():
         if k <= lt_end < target_pos:
             del indexed_contig[k]
