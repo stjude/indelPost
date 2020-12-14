@@ -637,22 +637,13 @@ def retarget(
     u_candidates.sort(key=lambda x: abs(x.pos - target.pos))
     candidate_seqs = [var.indel_seq for var in u_candidates]
     
-    best_matches = get_close_matches(
-        target.indel_seq, candidate_seqs, n=2, cutoff=cutoff
+    best_match = get_close_matches(
+        target.indel_seq, candidate_seqs, n=1, cutoff=cutoff
     )
     
-    if best_matches:
-        idx = [i for i, seq in enumerate(candidate_seqs) if seq in best_matches]
-        
-        u_candidates = [u_candidates[i] for i in idx]
-        if len(u_candidates) == 1:
-            candidate = u_candidates[0]
-        else:
-            first, second = u_candidates[0], u_candidates[1]
-            if abs(target.pos - first.pos) < abs(target.pos - second.pos):
-                candidate = first
-            else:
-                candidate = second
+    if best_match:
+        idx = candidate_seqs.index(best_match[0])
+        candidate = u_candidates[idx]
         
         candidate.normalize(inplace=True)
         if abs(target.pos - candidate.pos) < within:

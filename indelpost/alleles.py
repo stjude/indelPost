@@ -19,56 +19,56 @@ def phase_nearby_variants(
     snv_neighborhood,
     indel_neighborhood,
     indel_repeat_thresh,
+    mut_frac_thresh,
     sequence_complexity_thresh,
-    dbsnp,
-    hard=False,
+    hard,
+    to_complex,
 ):
 
-    if hard:
-        if contig.failed:
-            return target
-        else:
-            variants_list = []
-            cleaned, variant_list = precleaning(contig.contig_dict, variants_list, target.pos, pileup, limit_to_target_exon=True)
-            return greedy_phasing(target, cleaned)
-    
-    if contig.failed or contig.mapq < mapq_thresh or contig.is_target_right_aligned:
+    # no indel reads or contig construction failure
+    if contig.failed:
         return None
     
-    if (
-        seq_complexity(contig, snv_neighborhood, indel_neighborhood)
-        < sequence_complexity_thresh
+    # QC check
+    pileup_mapq_low_20 = np.percentile([read["mapq"] for read in pileup], 20)
+    if contig.mapq < mapq_thresh or  pileup_mapq_low_20 < mapq_thresh or contig.is_target_right_aligned:
+        return None
+    elif (
+          seq_complexity(contig, snv_neighborhood, indel_neighborhood)
+          < sequence_complexity_thresh
     ):
         return None
-
-    if low_qual_fraction(pileup) > low_qual_frac_thresh:
-        return None
-    
-    pileup_mapq_low_20 = np.percentile([read["mapq"] for read in pileup], 20)
-    if pileup_mapq_low_20 < mapq_thresh:
+    elif low_qual_fraction(pileup) > low_qual_frac_thresh:
         return None
 
+    # no phasable variants
     variants_to_phase = contig.mismatches + contig.non_target_indels
     if not variants_to_phase:
-        return None
-
+        return target
+    
+    # phase all phasables within the target exon (hard phasing)
+    if hard:
+        variants_list = []
+        cleaned, variant_list = precleaning(contig.contig_dict, variants_list, target.pos, pileup, limit_to_target_exon=True)
+        return greedy_phasing(target, cleaned)
+    
     indexed_contig = contig.contig_dict
     indexed_contig, variants_to_phase = precleaning(
         indexed_contig, variants_to_phase, target.pos, pileup
     )
     
     if not variants_to_phase:
-        return None
+        return target
     else:
         variants_in_non_targets, mut_frac = variants_in_non_target_pileup(
-            pileup, target, basequalthresh
+            pileup, target, basequalthresh, to_complex
         )
-        if mut_frac > 0.05:
-            return None
+        if mut_frac > mut_frac_thresh:
+            return target
     
     lt_loci, rt_loci, tmp = [], [], variants_to_phase.copy()
     for var in tmp:
-        if is_deletable(var, variants_in_non_targets, indel_repeat_thresh, dbsnp):
+        if is_deletable(var, variants_in_non_targets, indel_repeat_thresh):
             if var.pos < target.pos:
                 lt_loci.append(var.pos)
             elif var.pos > target.pos:
@@ -77,7 +77,7 @@ def phase_nearby_variants(
             variants_to_phase.remove(var)
     
     if not variants_to_phase:
-        return None
+        return target
 
     lt_end = max(lt_loci) if lt_loci else -np.inf
     rt_end = min(rt_loci) if rt_loci else np.inf
@@ -98,7 +98,7 @@ def phase_nearby_variants(
                     indexed_contig, peak_locs[0], target.pos, peak_locs[1]
                 )
             else:
-                return None
+                return target
         else:
             target_len = len(target.indel_seq)
             non_target_max_len = max(
@@ -117,12 +117,12 @@ def phase_nearby_variants(
         and len(cvar.alt) > 14
         and SequenceMatcher(None, cvar.ref, cvar.alt).ratio() > 0.75
     ):
-        return None
+        return target
     
     if cvar != target:
         return cvar
     else:
-        return None
+        return target
 
 
 def greedy_phasing(target, indexed_contig):
@@ -321,7 +321,10 @@ def is_tight_cluster(mismatches, target, snv_neighborhood):
     return True
 
 
-def variants_in_non_target_pileup(pileup, target, basequalthresh):
+def variants_in_non_target_pileup(pileup, target, basequalthresh, to_complex):
+    if not to_complex:
+        return [], 0.0
+
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)
         for read in pileup
@@ -365,7 +368,7 @@ def variants_in_non_target_pileup(pileup, target, basequalthresh):
     return set(indels + mismatches), mutation_frac
 
 
-def is_deletable(variant, deletable_variants, indel_repeat_thresh, dbsnp):
+def is_deletable(variant, deletable_variants, indel_repeat_thresh):
     
     if variant in deletable_variants:
         return True
@@ -374,28 +377,29 @@ def is_deletable(variant, deletable_variants, indel_repeat_thresh, dbsnp):
         if repeats(variant) >= indel_repeat_thresh:
             return True
 
-    if dbsnp:
-        hits = variant.query_vcf(dbsnp, indel_only=False)
-        for hit in hits:
-
-            info = hit["INFO"]
-            if info.get("COMMON", False):
-                return True
-
-            if (
-                info.get("G5A", False)
-                or info.get("G5A", False)
-                or info.get("HD", False)
-            ):
-                return True
-
-            if info.get("KGPhase1", False) or info.get("KGPhase1", False):
-                return True
-
-            topmedfreq = get_freq(info.get("TOPMED", 0.0))
-            caffreq = get_freq(info.get("CAP", 0.0))
-            if min(topmedfreq, caffreq) < 0.999:
-                return True
+    # filter by dbsnp -> depreciated
+    #if dbsnp:
+    #    hits = variant.query_vcf(dbsnp, indel_only=False)
+    #    for hit in hits:
+    #
+    #        info = hit["INFO"]
+    #        if info.get("COMMON", False):
+    #            return True
+    #
+    #        if (
+    #            info.get("G5A", False)
+    #            or info.get("G5A", False)
+    #            or info.get("HD", False)
+    #        ):
+    #            return True
+    #
+    #        if info.get("KGPhase1", False) or info.get("KGPhase1", False):
+    #            return True
+    #
+    #        topmedfreq = get_freq(info.get("TOPMED", 0.0))
+    #        caffreq = get_freq(info.get("CAP", 0.0))
+    #        if min(topmedfreq, caffreq) < 0.999:
+    #            return True
 
     return False
 

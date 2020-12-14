@@ -207,6 +207,7 @@ cdef class VariantAlignment:
                     grid = [(self.gap_open_penalty, self.gap_extension_penalty)]
                 
                 ans = check_overhangs(pileup)
+                
                 if ans:
                     intron, overhangs = ans[0], ans[1]
                     non_spurious_overhangs = filter_spurious_overhangs(
@@ -339,12 +340,24 @@ cdef class VariantAlignment:
         return pileup, contig
     
     def __eq__(self, other):
-        condition1 = (self.target_indel() == other.target_indel())
-        condition2 = (self.bam.filename == other.bam.filename)
-        return any((condition1, condition2))
+        # alignment equivalence
+        my_contig, other_contig = self.contig, other.contig
+
+        if my_contig.failed or other_contig.failed:
+            return False
+
+        # same BAM
+        if self.bam.filename != other.bam.filename:
+            return False
+        
+        # check eq in phased form
+        phasing_mode = "non_hard_non_complex"
+        my_phased, other_phased = self.phase(how=phasing_mode), other.phase(how=phasing_mode) 
+        
+        return (my_phased == other_phased)
 
     def __hash__(self):
-        hashable = (self.target_indel(), self.bam.filename)
+        hashable = (self.phase(how="non_hard_non_complex"), self.bam.filename)
         return hash(hashable)
 
     def target_indel(self):
@@ -443,14 +456,22 @@ cdef class VariantAlignment:
             )
 
 
-    def to_complex(
+    def phase(
         self,
         snv_neighborhood=15,
         indel_neighborhood=15,
         indel_repeat_thresh=5,
+        mutation_density_thresh=0.05,
         sequence_complexity_thresh=0.001,
-        dbsnp=None,
+        how="to_complex",
     ):
+        if how == "to_complex":
+            hard, to_complex = False, True
+        elif how == "hard":
+            hard, to_complex = True, False
+        else:
+            hard, to_complex = False, False
+        
         return phase_nearby_variants(
             self.__target,
             self.contig,
@@ -461,26 +482,12 @@ cdef class VariantAlignment:
             snv_neighborhood,
             indel_neighborhood,
             indel_repeat_thresh,
+            mutation_density_thresh,
             sequence_complexity_thresh,
-            dbsnp,
+            hard,
+            to_complex
         )
-     
-    def hard_phase(self):
-        return phase_nearby_variants(
-            self.__target,
-            self.contig,
-            self.__pileup,
-            self.mapqthresh,
-            self.low_qual_frac_thresh,
-            self.basequalthresh,
-            snv_neighborhood=15,
-            indel_neighborhood=15,
-            indel_repeat_thresh=5,
-            sequence_complexity_thresh=0.02,
-            dbsnp=None,
-            hard=True,
-        )
-     
+    
 
 def is_quality_read(read, pos, qualitywindow, qualitythresh):
 
@@ -602,7 +609,7 @@ cdef list preprocess_for_contig_construction(
             targetpileup = _targetpileup
         else:
             return targetpileup
-
+    
     return targetpileup
 
 
