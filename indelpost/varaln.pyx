@@ -351,13 +351,13 @@ cdef class VariantAlignment:
             return False
         
         # check eq in phased form
-        phasing_mode = "non_hard_non_complex"
+        phasing_mode = "hard"
         my_phased, other_phased = self.phase(how=phasing_mode), other.phase(how=phasing_mode) 
         
         return (my_phased == other_phased)
 
     def __hash__(self):
-        hashable = (self.phase(how="non_hard_non_complex"), self.bam.filename)
+        hashable = (self.phase(how="hard"), self.bam.filename)
         return hash(hashable)
 
     def target_indel(self):
