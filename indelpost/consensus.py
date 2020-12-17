@@ -22,10 +22,6 @@ def make_consensus(target, targetpileup, basequalthresh):
     for read in targetpileup:
         target_pos = target_pos if read.get("target_right_shifted", 0) else target_pos
 
-        
-        if "7D" not in read["cigar_list"]:
-            print(read)
-        
         try:
             lt = index_bases(
                     read["read_start"],

@@ -541,12 +541,10 @@ def retarget(
     gap_open_penalty,
     gap_extension_penalty,
 ):
-    if not perform_retarget:
-        return None
+    #if not perform_retarget:
+    #    return None
 
     target_seq, target_type = target.indel_seq, target.variant_type
-
-    #ref_seq, lt_len = get_local_reference(target, pileup, window)
 
     non_refs = [
         read_dict
@@ -559,78 +557,65 @@ def retarget(
     if not non_refs:
         return None
 
-    candidates, candidate_reads = [], []
     cutoff = 1.0 if len(target.indel_seq) < 3 else retargetcutoff
     
-    # first check for gapped alignments -> depreciated
-    #for read_dict in non_refs:
-    #    gapped_alns = read_dict[target_type]
-    #    if gapped_alns:
-    #        for gapped_aln in gapped_alns:
-    #            candidates.append(gapped_aln[-1])
-    #            candidate_reads.append(read_dict)
-   # 
-   # cutoff = (
-   #     min(retargetcutoff + 0.2, 1.0) if len(target.indel_seq) < 3 else retargetcutoff
-   # )
-#
- #   is_gapped_aln = True
- #   if candidates:
- #       candidate_seqs = [var.indel_seq for var in candidates]
- #       best_matches = get_close_matches(
- #           target.indel_seq, candidate_seqs, n=2, cutoff=cutoff
- #       )
-    
-    best_matches = None
+    #best_matches = None
     # check by realn if no gapped alignments or no good gapped alignmetns
-    if not candidates or not best_matches:
-        is_gapped_aln = False
+    #if not candidates or not best_matches:
+    #    is_gapped_aln = False
         
-        tmp_non_refs = non_refs.copy()
+    tmp_non_refs = non_refs.copy()
         
-        non_refs = [
-            read_dict 
-            for read_dict 
-            in non_refs 
-            if read_dict["low_qual_base_num"] < 6
-            and not read_dict["is_dirty"]
-        ]
+    non_refs = [
+        read_dict 
+        for read_dict 
+        in non_refs 
+        if read_dict["low_qual_base_num"] < 6
+        and not read_dict["is_dirty"]
+    ]
 
-        if not non_refs:
-            non_refs = [read_dict for read_dict in tmp_non_refs if not read_dict["is_dirty"]]
+    if not non_refs:
+        non_refs = [read_dict for read_dict in tmp_non_refs if not read_dict["is_dirty"]]
 
-        ref_starts = []
-        ref_alns = []
-        ref_seqs = []
-        for read in non_refs:
-            ref_seq, lt_len = get_local_reference(target, [read], window)
-            ref_seqs.append(ref_seq)        
-            aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
-            ref_alns.append(align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty))
-            ref_starts.append(target.pos + 1 - lt_len)
+    ref_starts, ref_alns, ref_seqs, aligners = [], [], [], []
+    for read in non_refs:
+        ref_seq, lt_len = get_local_reference(target, [read], window)
+        ref_seqs.append(ref_seq)        
         
-        for read, aln, ref_seq, ref_start in zip(non_refs, ref_alns, ref_seqs, ref_starts):
-            genome_aln_pos = ref_start + aln.reference_start
+        aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
+        aligners.append(aligner)
+        
+        ref_alns.append(align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty))
+        ref_starts.append(target.pos + 1 - lt_len)
+        
+    candidates, candidate_reads, candidate_ref_seqs, candidate_ref_starts, candidate_aligners = [], [], [], [], []
+    for read, aln, ref_seq, ref_start, aligner in zip(non_refs, ref_alns, ref_seqs, ref_starts, aligners):
+        genome_aln_pos = ref_start + aln.reference_start
             
-            gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
+        gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
             
-            if gap_cnt < 4:
-                indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
-                indels = [
-                    indel for indel in indels if indel["indel_type"] == target_type
-                ]
-                for indel in indels:
-                    if target_type == "I":
-                        ref = indel["lt_ref"][-1]
-                        alt = ref + indel["indel_seq"]
-                    else:
-                        alt = indel["lt_ref"][-1]
-                        ref = alt + indel["del_seq"]
+        if gap_cnt < 4:
+            indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
+            indels = [
+                indel for indel in indels if indel["indel_type"] == target_type
+            ]
+            
+            for indel in indels:
+                if target_type == "I":
+                    ref = indel["lt_ref"][-1]
+                    alt = ref + indel["indel_seq"]
+                else:
+                    alt = indel["lt_ref"][-1]
+                    ref = alt + indel["del_seq"]
                     
-                    candidates.append(
-                        Variant(target.chrom, indel["pos"], ref, alt, target.reference)
-                    )
-                    candidate_reads.append(read)
+                candidates.append(
+                    Variant(target.chrom, indel["pos"], ref, alt, target.reference)
+                )
+                candidate_reads.append(read)
+                candidate_ref_seqs.append(ref_seq)
+                candidate_ref_starts.append(ref_start)
+                candidate_aligners.append(aligner)
+    
     
     if not candidates:
         return None
@@ -656,35 +641,44 @@ def retarget(
             idx = [i for i, var in enumerate(candidates) if var == candidate]
             
             candidate_reads = [candidate_reads[i] for i in idx]
-            chrom, pos, indel_len, indel_type, reference = (
-                candidate.chrom,
-                candidate.pos,
-                len(candidate.indel_seq),
-                candidate.variant_type,
-                candidate.reference,
-            )
+            candidate_ref_seqs = [candidate_ref_seqs[i] for i in idx]
+            candidate_ref_starts = [candidate_ref_starts[i] for i in idx]
+            candidate_aligners = [candidate_aligners[i] for i in idx]
 
-            if is_gapped_aln:
-                candidate_reads = [
-                    update_read_info(read, candidate, is_gapped_aln)
-                    for read in candidate_reads
-                ]
-            else:
-                candidate_reads = [
-                    update_read_info(
-                        read,
-                        candidate,
-                        is_gapped_aln,
-                        gap_open_penalty,
-                        gap_extension_penalty,
-                        aligner,
-                        ref_seq,
-                        ref_start,
-                    )
-                    for read in candidate_reads
-                ]
+            #chrom, pos, indel_len, indel_type, reference = (
+            #    candidate.chrom,
+            #    candidate.pos,
+            #    len(candidate.indel_seq),
+            #    candidate.variant_type,
+            #    candidate.reference,
+            #)
+
+            #if is_gapped_aln:
+            #    candidate_reads = [
+            #        update_read_info(read, candidate, is_gapped_aln)
+            #        for read in candidate_reads
+            #    ]
+            #else:
+            #is_gapped_aln=False
             
-            return candidate, candidate_reads, match_score
+            #candidate_reads
+            
+            
+            #candidate_reads = [
+            #    update_read_info(
+            #    read,
+            #    candidate,
+            #    is_gapped_aln,
+            #    gap_open_penalty,
+            #    gap_extension_penalty,
+            #    aligner,
+            #    ref_seq,
+            #    ref_start,
+            #    )
+            #    for read in candidate_reads
+            #]
+            
+            return candidate, candidate_reads, match_score, candidate_ref_seqs, candidate_ref_starts, candidate_aligners
         else:
             return None
 
@@ -735,6 +729,7 @@ def update_read_info(
         )
         # can be multiple for complex indels
         indels = [indel for indel in indels if abs(candidate.pos - indel["pos"]) == 0]
+        
         
         is_found = False
         if indels:

@@ -337,6 +337,7 @@ cdef class VariantAlignment:
 
         # soft-clip realn & SW realn
         if contig.qc_passed:
+            
             pileup = find_by_softclip_split(self.__target, contig, pileup)
             pileup = find_by_smith_waterman_realn(
                 self.__target,
@@ -812,35 +813,42 @@ def grid_search(
         )
       
         if res:
+            score = res[2]
+            responses.append(res)
+            scores.append(score)
+            hs.append(h)
+
             # exact match
-            if res[2] == 1.0:
-                return res[0], res[1], grid[h][0], grid[h][1]
-            else:
-                responses.append(res)
-                scores.append(res[2])
-                hs.append(h)
-        h +=1
-    
-    # return closest if exact match is not found
+            if score == 1.0:
+                break
+        h += 1 
+
     if responses:
         idx = scores.index(max(scores))
         best_res = responses[idx]
         best_params = grid[hs[idx]]
-        return best_res[0], best_res[1], best_params[0], best_params[1]
+        
+        is_gapped_aln=False # to be removed
+
+        candidate = best_res[0]
+        gap_open_penalty, gap_extension_penalty = best_params[0], best_params[1]
+        
+        updated_reads = []        
+        for read, aligner, ref_seq, ref_start in zip(best_res[1], best_res[5], best_res[3], best_res[4]):
+            updated_read = update_read_info(
+                                read,
+                                candidate,
+                                is_gapped_aln,
+                                gap_open_penalty,
+                                gap_extension_penalty,
+                                aligner,
+                                ref_seq,
+                                ref_start,
+                            )
+                 
+            updated_reads.append(updated_read)        
+                     
+
+        return candidate, updated_reads, gap_open_penalty, gap_open_penalty
     else:
         return None                           
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
