@@ -4,7 +4,7 @@ import numpy as np
 import traceback
 from collections import OrderedDict
 
-from .utilities import most_common, to_flat_list
+from .utilities import most_common, to_flat_list, merge_consecutive_gaps
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
@@ -16,11 +16,16 @@ def make_consensus(target, targetpileup, basequalthresh):
         target.variant_type,
         len(target.indel_seq),
     )
-
+    
     lt_indexed, rt_indexed = [], []
+    
     for read in targetpileup:
         target_pos = target_pos if read.get("target_right_shifted", 0) else target_pos
 
+        
+        if "7D" not in read["cigar_list"]:
+            print(read)
+        
         try:
             lt = index_bases(
                     read["read_start"],
@@ -32,7 +37,6 @@ def make_consensus(target, targetpileup, basequalthresh):
                     read["lt_ref"],
                     read["lt_qual"],
                  )
-            
             rt = index_bases(
                     read["read_start"],
                     target_pos,
@@ -48,6 +52,7 @@ def make_consensus(target, targetpileup, basequalthresh):
                         read["lt_qual"][-1],
                         target.indel_seq,
                     ),
+                    left_flank=read["lt_flank"],
                     left=False,
                  )
             lt_indexed.append(lt)
@@ -74,6 +79,7 @@ def index_bases(
     ref,
     qual,
     left_padding=None,
+    left_flank=None,
     left=True,
 ):
     indexedbases = {}
@@ -92,7 +98,6 @@ def index_bases(
         )
 
         first_cigar = cigar_ptrn.findall(cigar[0])
-
         if len(first_cigar) == 1:
             if target_type == "I":
                 indexedbases[current_pos] = (
@@ -108,17 +113,33 @@ def index_bases(
                     qual_padding,
                 )
                 current_pos += target_len + 1
-        else:
+        elif len(first_cigar) == 2:
+            ins_first = "I" in first_cigar[0]
+
             del_len = sum(int(c[:-1]) for c in first_cigar if c[-1] == "D")
-            indexedbases[current_pos] = (
-                ref_padding + ref[:del_len],
-                flank_padding + target_seq,
-                qual_padding,
-            )
+            ins_len = sum(int(c[:-1]) for c in first_cigar if c[-1] == "I")
+
+            if target_type == "I":
+                indexedbases[current_pos] = (
+                    ref_padding + ref[:del_len],
+                    flank_padding + target_seq,
+                    qual_padding,
+                )
+                ref = ref[del_len:]
+                current_pos += del_len + 1
+            elif target_type == "D":
+                indexedbases[current_pos] = (
+                    ref_padding + target_seq,
+                    left_flank[-(ins_len+1):],
+                    qual_padding,
+                )
+
             current_pos += del_len + 1
+
+        else:
+             raise Exception 
         
         cigar = cigar[1:]
-
 
     for c in cigar:
         # complex pattrn (I and D merged)
@@ -148,7 +169,6 @@ def index_bases(
             )
 
             current_pos += del_len
-
         else:
             event, event_len = c[-1], int(c[:-1])
             
@@ -200,30 +220,6 @@ def index_bases(
                 current_pos += event_len
            
     return indexedbases
-
-
-def merge_consecutive_gaps(cigar_lst):
-
-    merged_lst = []
-    while cigar_lst:
-        c = cigar_lst[0]
-        cigar_lst = cigar_lst[1:]
-
-        if "I" in c or "D" in c:
-            i = 0
-            is_gap = True
-            while i < len(cigar_lst) and is_gap:
-                tmp = cigar_lst[i]
-                is_gap = True if "I" in tmp or "D" in tmp else False
-                i += 1
-
-            if i - 1:
-                c += "".join(cigar_lst[: i - 1])
-                cigar_lst = cigar_lst[i - 1 :]
-
-        merged_lst.append(c)
-
-    return merged_lst
 
 
 def consensus_data(indexedbases_list, left, basequalthresh):

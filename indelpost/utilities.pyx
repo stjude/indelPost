@@ -330,6 +330,50 @@ cpdef tuple split_cigar(str cigarstring, int target_pos, int start):
             lt_lst.append(cigar)
 
 
+def merge_consecutive_gaps(cigar_lst):
+
+    merged_lst = []
+    while cigar_lst:
+        c = cigar_lst[0]
+        cigar_lst = cigar_lst[1:]
+
+        if "I" in c or "D" in c:
+            i = 0
+            is_gap = True
+            while i < len(cigar_lst) and is_gap:
+                tmp = cigar_lst[i]
+                is_gap = True if "I" in tmp or "D" in tmp else False
+                i += 1
+
+            if i - 1:
+                c += "".join(cigar_lst[: i - 1])
+                cigar_lst = cigar_lst[i - 1 :]
+
+        merged_lst.append(c)
+
+    return merged_lst
+
+
+def make_insertion_first(cigarstring):
+    
+    cigar_lst = cigar_ptrn.findall(cigarstring)    
+    
+    merged_cigar_lst = merge_consecutive_gaps(cigar_lst)
+    new_cigar = []
+    for c in merged_cigar_lst:
+        if "I" in c and "D" in c:
+            c_lst = cigar_ptrn.findall(c)
+            if "D" in c_lst[0]:
+                swapped = c_lst[::-1]
+                new_cigar.append("".join(swapped))
+            else:
+                new_cigar.append("".join(c_lst))
+        else:
+            new_cigar.append(c)
+    
+    return "".join(new_cigar)     
+
+
 def relative_aln_pos(ref_seq, cigar_lst, aln_start, target_pos, include_clip=False):
     
     current_pos = aln_start - 1

@@ -5,7 +5,7 @@ import numpy as np
 from ssw import SSW
 
 from .consensus import is_compatible
-from .utilities import get_mapped_subreads, get_end_pos
+from .utilities import get_mapped_subreads, get_end_pos, make_insertion_first
 
 from indelpost.utilities cimport split, count_lowqual_non_ref_bases
 
@@ -346,7 +346,8 @@ def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, report_snvs=False
     lt_clipped = read_seq[:read_idx]
     
     indels, snvs = [], []
-    for token in cigar_ptrn.findall(ref_aln.CIGAR):
+
+    for token in cigar_ptrn.findall(make_insertion_first(ref_aln.CIGAR)):
         event, event_len = token[-1], int(token[:-1])
 
         if event == "I" or event == "D":

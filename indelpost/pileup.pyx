@@ -25,6 +25,7 @@ from .utilities import (
     to_flat_list, 
     get_mapped_subreads,  
     get_local_reference,
+    make_insertion_first,
 )
 from .localn import (
     align,
@@ -502,7 +503,7 @@ def is_non_spurious_overhang(
     if genome_score <= junction_score:
         return False
 
-    genome_cigar = genome_aln.CIGAR
+    genome_cigar = make_insertion_first(genome_aln.CIGAR)
     gap_cnt = genome_cigar.count("I") + genome_cigar.count("D")
 
     if gap_cnt > 3:
@@ -558,26 +559,29 @@ def retarget(
     if not non_refs:
         return None
 
-    # first check for gapped alignments
     candidates, candidate_reads = [], []
-    for read_dict in non_refs:
-        gapped_alns = read_dict[target_type]
-        if gapped_alns:
-            for gapped_aln in gapped_alns:
-                candidates.append(gapped_aln[-1])
-                candidate_reads.append(read_dict)
+    cutoff = 1.0 if len(target.indel_seq) < 3 else retargetcutoff
     
-    cutoff = (
-        min(retargetcutoff + 0.2, 1.0) if len(target.indel_seq) < 3 else retargetcutoff
-    )
-
-    is_gapped_aln = True
-    if candidates:
-        candidate_seqs = [var.indel_seq for var in candidates]
-        best_matches = get_close_matches(
-            target.indel_seq, candidate_seqs, n=2, cutoff=cutoff
-        )
+    # first check for gapped alignments -> depreciated
+    #for read_dict in non_refs:
+    #    gapped_alns = read_dict[target_type]
+    #    if gapped_alns:
+    #        for gapped_aln in gapped_alns:
+    #            candidates.append(gapped_aln[-1])
+    #            candidate_reads.append(read_dict)
+   # 
+   # cutoff = (
+   #     min(retargetcutoff + 0.2, 1.0) if len(target.indel_seq) < 3 else retargetcutoff
+   # )
+#
+ #   is_gapped_aln = True
+ #   if candidates:
+ #       candidate_seqs = [var.indel_seq for var in candidates]
+ #       best_matches = get_close_matches(
+ #           target.indel_seq, candidate_seqs, n=2, cutoff=cutoff
+ #       )
     
+    best_matches = None
     # check by realn if no gapped alignments or no good gapped alignmetns
     if not candidates or not best_matches:
         is_gapped_aln = False
@@ -642,10 +646,12 @@ def retarget(
     )
     
     if best_match:
-        idx = candidate_seqs.index(best_match[0])
+        best_seq = best_match[0]
+        match_score = SequenceMatcher(None, target.indel_seq, best_seq).ratio()
+        
+        idx = candidate_seqs.index(best_seq)
         candidate = u_candidates[idx]
         
-        candidate.normalize(inplace=True)
         if abs(target.pos - candidate.pos) < within:
             idx = [i for i, var in enumerate(candidates) if var == candidate]
             
@@ -678,7 +684,7 @@ def retarget(
                     for read in candidate_reads
                 ]
             
-            return candidate, candidate_reads
+            return candidate, candidate_reads, match_score
         else:
             return None
 
@@ -727,21 +733,29 @@ def update_read_info(
         indels = findall_indels(
             aln, genome_aln_pos, ref_seq, read["read_seq"], basequals=read["read_qual"]
         )
-        
+        # can be multiple for complex indels
         indels = [indel for indel in indels if abs(candidate.pos - indel["pos"]) == 0]
-         
+        
+        is_found = False
         if indels:
-            indel = indels[0]
-            if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
-                pass
-            elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:
-                pass
-            else:
-                read["cigar_updated"] = False
-                return read
-        else:
+            for indel in indels:
+                if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
+                    is_found = True
+                    break
+                elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:
+                    is_found = True
+                    break
+        
+        if not is_found:
             read["cigar_updated"] = False
             return read
+        
+        #    else:
+        #        read["cigar_updated"] = False
+        #        return read
+        #else:
+        #    read["cigar_updated"] = False
+        #    return read
 
         read["lt_flank"] = indel["lt_flank"]
         read["indel_seq"] = candidate.indel_seq if candidate.is_ins else ""
@@ -750,8 +764,9 @@ def update_read_info(
         read["rt_qual"] = indel["rt_qual"]
         
         realn_lt_cigar, realn_rt_cigar = split_cigar(
-            aln.CIGAR, candidate.pos, genome_aln_pos
+            make_insertion_first(aln.CIGAR), candidate.pos, genome_aln_pos
         )
+        
         read["lt_ref"] = trim_ref_flank(indel["lt_ref"], realn_lt_cigar, left=True)
         read["rt_ref"] = trim_ref_flank(indel["rt_ref"], realn_rt_cigar, left=False)
 
