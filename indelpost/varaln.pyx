@@ -98,10 +98,8 @@ cdef class VariantAlignment:
             else:
                 decomposed_variants = target.decompose_complex_variant(match_score, mismatch_penalty, gap_open_penalty, gap_extension_penalty)
             
-            # normalization check is neccessary for complex case
-            #decomposed_indels = [i for i in decomposed_variants if i.is_indel and i.is_normalized]
             decomposed_indels = [i for i in decomposed_variants if i.is_indel]
-            self.__target = max(decomposed_indels, key=lambda l : len(l.indel_seq)).normalize()
+            self.__target = max(decomposed_indels, key=lambda l : len(l.indel_seq))
             self.target = self.__target
         else:
             self.__target = target.normalize()
