@@ -77,7 +77,7 @@ cdef class VariantAlignment:
         bint retarget=True,
         int retarget_window=30,
         float retarget_cutoff=0.7,
-        int mapqthresh=20,
+        int mapqthresh=1,
         float low_qual_frac_thresh=0.2,
         int downsamplethresh=30000,
         int basequalthresh=20,
@@ -97,8 +97,11 @@ cdef class VariantAlignment:
                 decomposed_variants = target.decompose_complex_variant()
             else:
                 decomposed_variants = target.decompose_complex_variant(match_score, mismatch_penalty, gap_open_penalty, gap_extension_penalty)
+            
+            # normalization check is neccessary for complex case
+            #decomposed_indels = [i for i in decomposed_variants if i.is_indel and i.is_normalized]
             decomposed_indels = [i for i in decomposed_variants if i.is_indel]
-            self.__target = max(decomposed_indels, key=lambda l : len(l.indel_seq))
+            self.__target = max(decomposed_indels, key=lambda l : len(l.indel_seq)).normalize()
             self.target = self.__target
         else:
             self.__target = target.normalize()
@@ -155,7 +158,7 @@ cdef class VariantAlignment:
                 self.gap_extension_penalty,
                 self.basequalthresh,
             )
-            
+
             if self.target != self.__target:
                     self.__target, pileup = update_pileup(
                         pileup,
@@ -189,24 +192,11 @@ cdef class VariantAlignment:
             if contig.failed:
                 within = self.retarget_window
                 
-                # prepare param grid
-                if self.auto_adjust_extension_penalty:
-                    if (self.gap_open_penalty, self.gap_extension_penalty) != (3, 1):
-                        if len(self.__target.indel_seq) < 20:
-                            grid = [(self.gap_open_penalty, self.gap_extension_penalty),  
-                                    (3, 0), (4, 0), (5, 0), (3, 1), (4, 1), (5, 1)
-                            ]
-                        else:
-                            grid = [(self.gap_open_penalty, self.gap_extension_penalty),
-                                    (3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (5, 1)
-                            ]
-                    else:
-                         if len(self.__target.indel_seq) < 20:
-                            grid = [(3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (4, 0)]
-                         else:
-                            grid = [(3, 0), (3, 1), (5, 1), (5, 0), (4, 1), (4, 0)] 
-                else:
-                    grid = [(self.gap_open_penalty, self.gap_extension_penalty)]
+                grid = generate_grid(self.auto_adjust_extension_penalty, 
+                                     self.gap_open_penalty,
+                                     self.gap_extension_penalty,
+                                     self.__target,
+                       )
                 
                 ans = check_overhangs(pileup)
                 
@@ -239,25 +229,6 @@ cdef class VariantAlignment:
                             grid
                         )
                          
-                        #while not res and h < len(grid):    
-                        #    res = retarget(
-                        #        self.perform_retarget,
-                        #        self.__target,
-                        #        non_spurious_overhangs,
-                        #        self.window,
-                        #        self.mapqthresh,
-                        #        within,
-                        #        self.retarget_cutoff,
-                        #        self.match_score,
-                        #        self.mismatch_penalty,
-                        #        grid[h][0],
-                        #        grid[h][1],
-                        #    )
-                        #    
-                        #    if res:
-                        #        self.gap_open_penalty, self.gap_extension_penalty = grid[h][0], grid[h][1]
-                        #    h += 1
-
                         if res:
                             self.gap_open_penalty, self.gap_extension_penalty = res[2], res[3]
                         else:      
@@ -278,21 +249,6 @@ cdef class VariantAlignment:
                         grid,
                     )
                     
-                    #while not res and h < len(grid):
-                    #    res = retarget(
-                    #        self.perform_retarget,
-                    #        self.__target,
-                    #        pileup,
-                    #        self.window,
-                    #        self.mapqthresh,
-                    #        within,
-                    #        self.retarget_cutoff,
-                    #        self.match_score,
-                    #        self.mismatch_penalty,
-                    #        grid[h][0],
-                    #        grid[h][1],
-                    #    )
-                        
                     if res:
                         self.gap_open_penalty, self.gap_extension_penalty = res[2], res[3]
                         
@@ -327,7 +283,7 @@ cdef class VariantAlignment:
                         self.basequalthresh,
                         self.mapqthresh
                     )
-
+                    
                     # 2nd-pass using the retarget
                     return self.__parse_pileup(contig=contig, retargeted=True)
 
@@ -338,7 +294,55 @@ cdef class VariantAlignment:
         # soft-clip realn & SW realn
         if contig.qc_passed:
             
+            # realign reads that are not through retarget path
+            if not retargeted:
+                cutoff = 1.0
+                within = 30 
+                
+                target = [read for read in pileup if read["is_target"]]
+                nontarget = [read for read in pileup if not read["is_target"]]
+                
+                grid = generate_grid(self.auto_adjust_extension_penalty, 
+                                     self.gap_open_penalty,
+                                     self.gap_extension_penalty,
+                                     self.__target,
+                       )
+                
+                res = grid_search(
+                        self.perform_retarget,
+                        self.__target,
+                        nontarget,
+                        self.window,
+                        self.mapqthresh,
+                        within,
+                        cutoff,
+                        self.match_score,
+                        self.mismatch_penalty,
+                        grid,
+                    )
+                
+                if res:
+                    nontarget = [read for read in nontarget if read not in res[1]]
+                    pileup = target + res[1] + nontarget
+                    self.gap_open_penalty, self.gap_extension_penalty = res[2], res[3]
+                     
+                    self.__target, pileup = update_pileup(
+                        pileup,
+                        self.__target,
+                        self.window,
+                        self.match_score,
+                        self.mismatch_penalty,
+                        self.gap_open_penalty,
+                        self.gap_extension_penalty,
+                        self.basequalthresh,
+                        bypass_search=True,
+                    )
+
+                else:
+                    pileup = target + nontarget    
+                    
             pileup = find_by_softclip_split(self.__target, contig, pileup)
+            
             pileup = find_by_smith_waterman_realn(
                 self.__target,
                 contig,
@@ -349,7 +353,7 @@ cdef class VariantAlignment:
                 self.gap_extension_penalty,
                 self.basequalthresh
             )
-            
+
             contig = Contig(
                 self.__target,
                 preprocess_for_contig_construction(
@@ -487,7 +491,7 @@ cdef class VariantAlignment:
         indel_neighborhood=15,
         indel_repeat_thresh=10,
         mutation_density_thresh=0.05,
-        sequence_complexity_thresh=0.001,
+        sequence_complexity_thresh=0.0,
         how="to_complex",
     ):
         if how == "to_complex":
@@ -583,7 +587,7 @@ cdef list preprocess_for_contig_construction(
     
     clips = len(clipped_targetpileup)
     nonclips = len(nonclipped_targetpileup)
-
+    
     if target == orig_target and nonclips > 9:
         targetpileup = random.sample(nonclipped_targetpileup, 10)
         targetpileup = [right_aligner(read, target) for read in targetpileup]
@@ -622,7 +626,7 @@ cdef list preprocess_for_contig_construction(
         ]
         
         targetpileup = [read for read in targetpileup if read is not None and (read.get("lt_cigar", None) and read.get("rt_cigar", None))]
-
+        
         _targetpileup = [
             read for read in targetpileup if read.get("cigar_updated", False) 
         ]
@@ -782,6 +786,32 @@ def right_aligner(read, target):
     return read
 
 
+def generate_grid (auto_adjust_extension_penalty,
+                   gap_open_penalty,
+                   gap_extension_penalty,
+                   target,
+):
+    if auto_adjust_extension_penalty:
+        if (gap_open_penalty, gap_extension_penalty) != (3, 1):
+            if len(target.indel_seq) < 20:
+                grid = [(gap_open_penalty, gap_extension_penalty),  
+                            (3, 0), (4, 0), (5, 0), (3, 1), (4, 1), (5, 1)
+                       ]
+            else:
+                grid = [(gap_open_penalty, gap_extension_penalty),
+                            (3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (5, 1)
+                       ]
+        else:
+            if len(target.indel_seq) < 20:
+                grid = [(3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (4, 0)]
+            else:
+                grid = [(3, 0), (3, 1), (5, 1), (5, 0), (4, 1), (4, 0)] 
+    else:
+        grid = [(gap_open_penalty, gap_extension_penalty)]
+    
+    return grid
+
+
 def grid_search(
     perform_retarget,
     target, 
@@ -815,12 +845,16 @@ def grid_search(
         if res:
             score = res[2]
             responses.append(res)
-            scores.append(score)
+            #scores.append(score)
             hs.append(h)
 
             # exact match
             if score == 1.0:
-                break
+                scores.append(score * len(res[1]))
+                # cnt exact hit?
+                #break
+            else:
+                scores.append(score)
         h += 1 
 
     if responses:
@@ -831,6 +865,7 @@ def grid_search(
         is_gapped_aln=False # to be removed
 
         candidate = best_res[0]
+        
         gap_open_penalty, gap_extension_penalty = best_params[0], best_params[1]
         
         updated_reads = []        
@@ -849,6 +884,6 @@ def grid_search(
             updated_reads.append(updated_read)        
                      
 
-        return candidate, updated_reads, gap_open_penalty, gap_open_penalty
+        return candidate, updated_reads, gap_open_penalty, gap_extension_penalty
     else:
         return None                           

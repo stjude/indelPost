@@ -42,7 +42,7 @@ def phase_nearby_variants(
         return None
      
     indexed_contig = contig.contig_dict
-
+    
     # no phasable variants
     variants_to_phase = contig.mismatches + contig.non_target_indels
     if not variants_to_phase:
@@ -105,17 +105,22 @@ def phase_nearby_variants(
 
             if max(target_len, non_target_max_len) < 4:
                 indel_neighborhood = int(indel_neighborhood / 2)
-
+            
             remove_common_substrings(indexed_contig, target.pos, indel_neighborhood)
-    
+
+            lt_end = end_point(indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=True)
+            rt_end = end_point(indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=False)
+            
+            remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
+
     cvar = greedy_phasing(target, indexed_contig)
     
-    if (
-        len(cvar.ref) > 14
-        and len(cvar.alt) > 14
-        and SequenceMatcher(None, cvar.ref, cvar.alt).ratio() > 0.75
-    ):
-        return make_target_obj_from_contig(target, indexed_contig)
+    #if (
+    #    len(cvar.ref) > 14
+    #    and len(cvar.alt) > 14
+    #    and SequenceMatcher(None, cvar.ref, cvar.alt).ratio() > 0.75
+    #):
+    #    return make_target_obj_from_contig(target, indexed_contig)
     
     if cvar != target:
         return cvar
@@ -485,6 +490,7 @@ def trim_common(indexed_contig, commons, max_common_str_len, left):
         else:
             start = search_nearest_lt_locus(indexed_contig, sub_str[0], left)
         
+        
         end = sub_str[-1]
         start_event = indexed_contig[start]
         end_event = indexed_contig[end]
@@ -578,3 +584,49 @@ def extend_sub_str(start, indexed_contig):
         common_sub_str = [common_start, common_end]
 
     return common_sub_str
+
+
+def end_point(indexed_contig, mismatches, target, snv_neighborhood, left):
+    
+    tmp = indexed_contig.copy()
+    
+    if not left:
+        tmp = OrderedDict(reversed(list(tmp.items())))
+    
+    end_item = list(tmp.items())[0]
+    end_pos, end_variant = end_item[0], end_item[1]
+    if len(end_variant[0]) != len(end_variant[1]):
+        if left:
+            return end_pos - 1
+        else:
+            return end_pos + 1
+
+    end_most_indel = get_end_most_indel(tmp, target)
+    if not left:
+        tmp = OrderedDict(reversed(list(tmp.items())))
+    
+    score, peak_pos = calc_peak(tmp, mismatches, end_most_indel, snv_neighborhood, left)
+    if score <= 0:
+        if left:
+            return end_most_indel.pos - 1
+        else:
+            return end_most_indel.pos + 1
+    else:
+        if left:
+            return peak_pos - 1
+        else:
+            return peak_pos + 1
+
+
+    
+def get_end_most_indel(indexed_contig, target):
+    
+    for k, v in indexed_contig.items():
+        if len(v[0]) != len(v[1]):
+            return Variant(target.chrom, k, v[0], v[1], target.reference)       
+
+
+
+
+
+    

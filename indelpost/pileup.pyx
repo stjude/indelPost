@@ -607,7 +607,7 @@ def retarget(
                 else:
                     alt = indel["lt_ref"][-1]
                     ref = alt + indel["del_seq"]
-                    
+               
                 candidates.append(
                     Variant(target.chrom, indel["pos"], ref, alt, target.reference)
                 )
@@ -727,19 +727,42 @@ def update_read_info(
         indels = findall_indels(
             aln, genome_aln_pos, ref_seq, read["read_seq"], basequals=read["read_qual"]
         )
+        
+        
+        
+        is_found= False
+        #idls = []
+        for indel in indels:
+            if not indel.get("del_seq", False):
+                ref = indel["lt_ref"][-1]
+                alt = ref + indel["indel_seq"]
+            else:
+                alt = indel["lt_ref"][-1]
+                ref = alt + indel["del_seq"]
+            
+            obj = Variant(candidate.chrom, indel["pos"], ref, alt, candidate.reference)
+            if candidate == obj:
+                is_found = True
+                break   
+         #   idls.append(
+         #       Variant(target.chrom, indel["pos"], ref, alt, candidate.reference)
+         #   )
+
+
         # can be multiple for complex indels
-        indels = [indel for indel in indels if abs(candidate.pos - indel["pos"]) == 0]
+        #indels = [indel for indel in indels if abs(candidate.pos - indel["pos"]) == 0]
         
         
-        is_found = False
-        if indels:
-            for indel in indels:
-                if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
-                    is_found = True
-                    break
-                elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:
-                    is_found = True
-                    break
+        
+        # replace with normalization
+        #if indels:
+        #    for indel in indels:
+        #        if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
+        #            is_found = True
+        #            break
+        #        elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:
+        #            is_found = True
+        #            break
         
         if not is_found:
             read["cigar_updated"] = False
@@ -758,8 +781,9 @@ def update_read_info(
         read["lt_qual"] = indel["lt_qual"]
         read["rt_qual"] = indel["rt_qual"]
         
+        real_pos = indel["pos"] 
         realn_lt_cigar, realn_rt_cigar = split_cigar(
-            make_insertion_first(aln.CIGAR), candidate.pos, genome_aln_pos
+            make_insertion_first(aln.CIGAR), real_pos, genome_aln_pos
         )
         
         read["lt_ref"] = trim_ref_flank(indel["lt_ref"], realn_lt_cigar, left=True)

@@ -21,6 +21,13 @@ def most_common(lst):
     return max(alst, key=lst.count)
 
 
+def get_gap_ptrn(read):
+    return "".join([c for c in read["cigar_list"] if "D" in c or "I" in c])
+
+def most_common_gap_pattern(targetpileup):
+    ptrns = [get_gap_ptrn(read) for read in targetpileup]
+    return most_common(ptrns)
+ 
 cpdef list to_flat_list(list lst_of_lst):
     cdef list lst
     return [i for lst in lst_of_lst for i in lst]

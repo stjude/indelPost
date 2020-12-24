@@ -41,7 +41,7 @@ def find_by_smith_waterman_realn(
     
     mut_aligner = make_aligner(mut_ref, match_score, mismatch_penalty)
     ref_aligner = make_aligner(ref_ref, match_score, mismatch_penalty)
-
+    
     pileup = [findall_mismatches(read) for read in pileup]
 
     pileup = [

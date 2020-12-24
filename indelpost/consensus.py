@@ -4,13 +4,17 @@ import numpy as np
 import traceback
 from collections import OrderedDict
 
-from .utilities import most_common, to_flat_list, merge_consecutive_gaps
+from .utilities import most_common, get_gap_ptrn, most_common_gap_pattern, to_flat_list, merge_consecutive_gaps
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 def make_consensus(target, targetpileup, basequalthresh):
-   
+     
+    expected_ptrn = most_common_gap_pattern(targetpileup)
+    
+    targetpileup = [read for read in targetpileup if expected_ptrn == get_gap_ptrn(read)]
+
     target_pos, target_type, target_len = (
         target.pos,
         target.variant_type,
@@ -53,11 +57,13 @@ def make_consensus(target, targetpileup, basequalthresh):
                  )
             lt_indexed.append(lt)
             rt_indexed.append(rt)
+        
         except:
             #traceback.print_exc() 
             #for debugging
             pass
 
+    
     if lt_indexed and rt_indexed:
         lt_consensus = consensus_data(lt_indexed, True, basequalthresh)
         rt_consensus = consensus_data(rt_indexed, False, basequalthresh)
@@ -94,7 +100,7 @@ def index_bases(
         )
 
         first_cigar = cigar_ptrn.findall(cigar[0])
-        if len(first_cigar) == 1:
+        if len(first_cigar) == 1 and target_type in first_cigar[0]:
             if target_type == "I":
                 indexedbases[current_pos] = (
                     ref_padding,
@@ -132,11 +138,17 @@ def index_bases(
 
             current_pos += del_len + 1
 
-        else:
-             raise Exception 
-        
-        cigar = cigar[1:]
+        elif len(first_cigar) == 1 and "M" in first_cigar[0]:
+            map_len = int(first_cigar[0][:-1])
+            for i in range(map_len):
+                indexedbases[current_pos] = (ref[0], flank[0], qual[0])      
+                ref = ref[1:]
+                flank = flank[1:]
+                qual = qual[1:]
+                current_pos += 1
 
+        cigar = cigar[1:]
+        
     for c in cigar:
         # complex pattrn (I and D merged)
         if "I" in c and "D" in c:
@@ -214,16 +226,17 @@ def index_bases(
 
             elif event == "N":
                 current_pos += event_len
-           
+    
     return indexedbases
 
 
 def consensus_data(indexedbases_list, left, basequalthresh):
-
+    
     consensus_index = OrderedDict()
 
     skip_loci = []
     for locus in locus_list(indexedbases_list, left):
+        
         ref, consensus_base, consensus_score, coverage = get_consensus_base(
             indexedbases_list, locus, basequalthresh
         )
@@ -231,6 +244,7 @@ def consensus_data(indexedbases_list, left, basequalthresh):
         if len(ref) > len(consensus_base) and "N" not in consensus_base:
             del_len = len(ref) - len(consensus_base)
             skip_loci += [locus + i for i in range(1, del_len + 1)]
+            
         consensus_index[locus] = (ref, consensus_base, consensus_score, coverage)
     
     for locus in skip_loci:
@@ -266,7 +280,7 @@ def consensus_data(indexedbases_list, left, basequalthresh):
 
         prev_locus = locus
         prev_ref = ref
-
+        
     if left:
         conseq = conseq[::-1]
         refseq = refseq[::-1]
