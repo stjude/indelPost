@@ -103,7 +103,7 @@ cdef class VariantAlignment:
             self.target = self.__target
         else:
             self.__target = target.normalize()
-        
+
         self.bam = bam
         self.window = window
         self.exclude_duplicates = exclude_duplicates
@@ -156,7 +156,7 @@ cdef class VariantAlignment:
                 self.gap_extension_penalty,
                 self.basequalthresh,
             )
-
+            
             if self.target != self.__target:
                     self.__target, pileup = update_pileup(
                         pileup,
@@ -185,7 +185,7 @@ cdef class VariantAlignment:
                 self.basequalthresh,
                 self.mapqthresh,
             )
-
+            
             self.is_spurious_overhang = False
             if contig.failed:
                 within = self.retarget_window
@@ -216,7 +216,7 @@ cdef class VariantAlignment:
                     else:
                         res = grid_search(
                             self.perform_retarget,
-                            self._target, 
+                            self.__target, 
                             non_spurious_overhangs,
                             self.window,
                             self.mapqthresh,

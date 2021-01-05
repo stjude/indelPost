@@ -79,8 +79,10 @@ cdef class Variant:
             )
 
         bases = {"A", "C", "T", "G", "N", "a", "t", "c", "g", "n"}
-        if not set(list(self.ref)) <= bases or not set(list(self.alt)) <= bases:
-            raise ValueError("Allele contains char other than A/a, C/c, T/t, G/g, N/n")
+        ref_lst, alt_lst = list(self.ref), list(self.alt)
+        if not set(ref_lst) <= bases or not set(alt_lst) <= bases:
+            self.ref = "".join([base if base in bases else "N" for base in ref_lst])
+            self.alt = "".join([base if base in bases else "N" for base in alt_lst])
 
         # check if contig is valid
         try:
@@ -340,7 +342,7 @@ cdef class Variant:
         else:
             i = self
 
-        lt_flank = i.reference.fetch(i.chrom, i.pos - window, i.pos)
+        lt_flank = i.reference.fetch(i.chrom, max(0, i.pos - window), i.pos)
         
         return lt_flank
 
@@ -351,11 +353,12 @@ cdef class Variant:
         else:
             i = self
 
+        ref_lim = i.reference.get_reference_length(i.chrom)
         if i.variant_type == "I":
-            rt_flank = i.reference.fetch(i.chrom, i.pos, i.pos + window)
+            rt_flank = i.reference.fetch(i.chrom, i.pos, min(i.pos + window, ref_lim))
         else:
             event_len = len(i.indel_seq) if "D" else len(i.ref)
-            rt_flank = i.reference.fetch(i.chrom, i.pos + event_len, i.pos + event_len + window)
+            rt_flank = i.reference.fetch(i.chrom, i.pos + event_len, min(i.pos + event_len + window, ref_lim))
 
         return rt_flank
 

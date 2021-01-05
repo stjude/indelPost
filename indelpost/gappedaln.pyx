@@ -154,7 +154,6 @@ def get_closest_gap(center_score, read_end, target, pileup):
                 else:
                     pos_look_up[i] = abs(i.pos - target.pos)
                     read_look_up[i] = [read]
-    
     if pos_look_up:
         closest_gap = min(pos_look_up, key=pos_look_up.get)
         closest_gap_reads = read_look_up[closest_gap]
@@ -215,6 +214,11 @@ def seek_larger_gapped_aln(
             reverse=False,
         )
 
+        if target.is_ins:
+            rt_read = rt_read[len(target.indel_seq):] 
+        elif target.is_del:
+            rt_ref = rt_ref[len(target.indel_seq):] 
+
         with_end_mut = False
         if center_score >= 0:
             if lt_read != lt_ref and min(lt_qual) > basequalthresh:
@@ -231,7 +235,6 @@ def seek_larger_gapped_aln(
             res = get_closest_gap(center_score, read_end, target, pileup)
             if res:
                 closet_gap, closest_gap_read = res[0], res[1]
-
                 subject_aligned_seq = closest_gap_read["read"].query_alignment_sequence
                 query_aligned_seq = read["read"].query_alignment_sequence
 

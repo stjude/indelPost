@@ -250,11 +250,11 @@ cdef list get_spliced_subreads(str cigarstring, int read_start_pos, int read_end
         
         prev_event = event
     
-    pos_lst.append(read_end_pos) 
+    if prev_event != "N":
+        pos_lst.append(read_end_pos) 
     while i < len(pos_lst):
         res.append(pos_lst[i : i+2])
         i += 2
-        
     return res
 
 

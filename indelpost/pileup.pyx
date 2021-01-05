@@ -129,7 +129,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     
     cigar_string = read.cigarstring
     cigar_list = cigar_ptrn.findall(cigar_string)
-
+    
     # adjust read start/end if starts or ends with softclipping
     aln_start = read.reference_start + 1
     start_offset = int(cigar_list[0][:-1]) if cigar_list[0].endswith("S") else 0
@@ -167,7 +167,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
         "I": [],
         "D": [],
     }
-
+    
     # base qual check
     read_dict["low_qual_base_num"] = count_lowqual_non_ref_bases(read_seq, ref_seq, read_qual, cigar_list, basequalthresh)
     
@@ -215,6 +215,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     if indels:
         for indel in indels:
             cigar_string = leftalign_cigar(cigar_string, indel, read_start)
+
         read_dict["cigar_string"] = cigar_string
         read_dict["cigar_list"] = cigar_ptrn.findall(read_dict["cigar_string"])
 
@@ -362,6 +363,7 @@ cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, in
         while i < len(positions):
             start = positions[i] + 1
             end = positions[i + 1] - 1
+            
             if end < pos:
                 if not lt_ptrn:
                     lt_ptrn += str(start) + "-" + str(end)
@@ -645,39 +647,6 @@ def retarget(
             candidate_ref_starts = [candidate_ref_starts[i] for i in idx]
             candidate_aligners = [candidate_aligners[i] for i in idx]
 
-            #chrom, pos, indel_len, indel_type, reference = (
-            #    candidate.chrom,
-            #    candidate.pos,
-            #    len(candidate.indel_seq),
-            #    candidate.variant_type,
-            #    candidate.reference,
-            #)
-
-            #if is_gapped_aln:
-            #    candidate_reads = [
-            #        update_read_info(read, candidate, is_gapped_aln)
-            #        for read in candidate_reads
-            #    ]
-            #else:
-            #is_gapped_aln=False
-            
-            #candidate_reads
-            
-            
-            #candidate_reads = [
-            #    update_read_info(
-            #    read,
-            #    candidate,
-            #    is_gapped_aln,
-            #    gap_open_penalty,
-            #    gap_extension_penalty,
-            #    aligner,
-            #    ref_seq,
-            #    ref_start,
-            #    )
-            #    for read in candidate_reads
-            #]
-            
             return candidate, candidate_reads, match_score, candidate_ref_seqs, candidate_ref_starts, candidate_aligners
         else:
             return None
@@ -729,9 +698,7 @@ def update_read_info(
         )
         
         
-        
         is_found= False
-        #idls = []
         for indel in indels:
             if not indel.get("del_seq", False):
                 ref = indel["lt_ref"][-1]
@@ -744,36 +711,10 @@ def update_read_info(
             if candidate == obj:
                 is_found = True
                 break   
-         #   idls.append(
-         #       Variant(target.chrom, indel["pos"], ref, alt, candidate.reference)
-         #   )
-
-
-        # can be multiple for complex indels
-        #indels = [indel for indel in indels if abs(candidate.pos - indel["pos"]) == 0]
-        
-        
-        
-        # replace with normalization
-        #if indels:
-        #    for indel in indels:
-        #        if candidate.is_ins and indel["indel_seq"] == candidate.indel_seq:
-        #            is_found = True
-        #            break
-        #        elif candidate.is_del and indel.get("del_seq", "") == candidate.indel_seq:
-        #            is_found = True
-        #            break
         
         if not is_found:
             read["cigar_updated"] = False
             return read
-        
-        #    else:
-        #        read["cigar_updated"] = False
-        #        return read
-        #else:
-        #    read["cigar_updated"] = False
-        #    return read
 
         read["lt_flank"] = indel["lt_flank"]
         read["indel_seq"] = candidate.indel_seq if candidate.is_ins else ""
@@ -781,9 +722,8 @@ def update_read_info(
         read["lt_qual"] = indel["lt_qual"]
         read["rt_qual"] = indel["rt_qual"]
         
-        real_pos = indel["pos"] 
         realn_lt_cigar, realn_rt_cigar = split_cigar(
-            make_insertion_first(aln.CIGAR), real_pos, genome_aln_pos
+            make_insertion_first(aln.CIGAR), indel["pos"], genome_aln_pos
         )
         
         read["lt_ref"] = trim_ref_flank(indel["lt_ref"], realn_lt_cigar, left=True)
@@ -805,10 +745,11 @@ def update_read_info(
             indel["rt_clipped"],
             left=False,
         )
+        
         read["cigar_list"] = read["lt_cigar"] + read["rt_cigar"]
         read["cigar_string"] = "".join(read["cigar_list"])
         read["cigar_updated"] = True
-
+        
         update_read_positions(read, candidate.pos)
 
         read["is_target"] = True
@@ -865,7 +806,10 @@ def update_cigar(
                         if i != last:
                             m = span[0] - current_pos
                             
-                            new_cigar += [str(m) + "M", str(n) + "N"]
+                            if m:
+                                new_cigar += [str(m) + "M", str(n) + "N"]
+                            else:
+                                new_cigar += [str(n) + "N"]    
                                              
                             current_pos += m + n
                             event_len -= m
@@ -922,6 +866,7 @@ def update_cigar(
     else:
         return [target_event] + new_cigar + trailing_clip
 
+    return updated_cigar
 
 def numeric_span(spl_span):
     spl_span_lst = spl_span.split("-")
@@ -969,7 +914,7 @@ def update_pileup(
         ) = parse_spliced_read(
             read["cigar_string"], read["read_start"], read["read_end"], new_target.pos, rpos
         )
-
+           
         read["is_covering"] = is_covering
         read["covering_subread"] = covering_subread
         read["is_spliced"] = is_spliced
