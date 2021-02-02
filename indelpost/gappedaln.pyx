@@ -158,9 +158,13 @@ def get_closest_gap(center_score, read_end, target, pileup):
         closest_gap = min(pos_look_up, key=pos_look_up.get)
         closest_gap_reads = read_look_up[closest_gap]
         central_closest_gap_read, score = get_most_centered_read(
-            closest_gap, pileup, target_annotated=False,
+            closest_gap, closest_gap_reads, target_annotated=False,
         )
-        return closest_gap, central_closest_gap_read
+        
+        if closest_gap and central_closest_gap_read:
+            return closest_gap, central_closest_gap_read
+        else:
+            return None
     else:
         return None
 
