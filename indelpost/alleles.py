@@ -104,7 +104,7 @@ def phase_nearby_variants(
             )
 
             if max(target_len, non_target_max_len) < 4:
-                indel_neighborhood = int(indel_neighborhood / 2)
+                indel_neighborhood = int(indel_neighborhood / 2) + 1
             
             remove_common_substrings(indexed_contig, target.pos, indel_neighborhood)
 

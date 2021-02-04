@@ -490,11 +490,11 @@ cdef class VariantAlignment:
         indel_repeat_thresh=10,
         mutation_density_thresh=0.05,
         sequence_complexity_thresh=0.0,
-        how="to_complex",
+        how="complex",
     ):
-        if how == "to_complex":
+        if how == "complex":
             hard, to_complex = False, True
-        elif how == "hard":
+        elif how == "greedy":
             hard, to_complex = True, False
         else:
             hard, to_complex = False, False
@@ -868,6 +868,7 @@ def grid_search(
         
         updated_reads = []        
         for read, aligner, ref_seq, ref_start in zip(best_res[1], best_res[5], best_res[3], best_res[4]):
+            
             updated_read = update_read_info(
                                 read,
                                 candidate,

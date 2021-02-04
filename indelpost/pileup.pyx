@@ -236,6 +236,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
 
     return read_dict
 
+
 cdef str get_ref_seq(
     str chrom,
     int aln_start, 
@@ -637,7 +638,8 @@ def retarget(
         match_score = SequenceMatcher(None, target.indel_seq, best_seq).ratio()
         
         idx = candidate_seqs.index(best_seq)
-        candidate = u_candidates[idx]
+        idx2 = candidates.index(u_candidates[idx])
+        candidate = candidates[idx2]
         
         if abs(target.pos - candidate.pos) < within:
             idx = [i for i, var in enumerate(candidates) if var == candidate]
@@ -697,7 +699,6 @@ def update_read_info(
             aln, genome_aln_pos, ref_seq, read["read_seq"], basequals=read["read_qual"]
         )
         
-        
         is_found= False
         for indel in indels:
             if not indel.get("del_seq", False):
@@ -710,6 +711,7 @@ def update_read_info(
             obj = Variant(candidate.chrom, indel["pos"], ref, alt, candidate.reference)
             if candidate == obj:
                 is_found = True
+                indel_pos_in_this_read = indel["pos"]
                 break   
         
         if not is_found:
@@ -750,7 +752,7 @@ def update_read_info(
         read["cigar_string"] = "".join(read["cigar_list"])
         read["cigar_updated"] = True
         
-        update_read_positions(read, candidate.pos)
+        update_read_positions(read, indel_pos_in_this_read)
 
         read["is_target"] = True
 
@@ -868,6 +870,7 @@ def update_cigar(
 
     return updated_cigar
 
+
 def numeric_span(spl_span):
     spl_span_lst = spl_span.split("-")
     return [int(i) for i in spl_span_lst]
@@ -877,7 +880,7 @@ def update_read_positions(read, target_pos):
 
     left_adjust = sum([-int(c[:-1]) if c[-1] != "I" else 0 for c in read["lt_cigar"]])
     right_adjust = sum([int(c[:-1]) if c[-1] != "I" else 0 for c in read["rt_cigar"]])
-    
+
     read["read_start"] = target_pos + left_adjust + 1
     read["read_end"] = target_pos + right_adjust
 

@@ -120,10 +120,7 @@ def findall_mismatches(read, end_trim=0):
         )
 
         
-        try:
-            mapped_seq = lt_seq[-1] + rt_seq[: span - 1]
-        except:
-            print(lt_seq, rt_seq, span, subread, aln_start, read["read_name"], read["cigar_list"])
+        mapped_seq = lt_seq[-1] + rt_seq[: span - 1]
         mapped_qual = [lt_qual[-1]] + list(rt_qual[: span - 1])
         mapped_ref = lt_ref[-1] + rt_ref[: span - 1]
 
