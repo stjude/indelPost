@@ -122,8 +122,10 @@ cdef class Variant:
 
     @property
     def variant_type(self):
-        """returns "I" if insertion, "D" if deletion, "S" if signle-nucleotide substitution, 
-        and "M" if multi-nucleotide substitution. 
+        """returns "I" if the net allele-length change is gain, 
+        "D" if the net change is loss, 
+        "S" if signle-nucleotide substitution (zero net change), 
+        and "M" if multi-nucleotide substitution (zero net change). 
         """ 
         
         cdef int r_len, a_len
@@ -144,28 +146,28 @@ cdef class Variant:
 
     @property
     def is_del(self):
-        """returns True if deletion
+        """evaluates if :attr:`~indelpost.Variant.variant_type` is "D".
         """
         return self.variant_type == "D"
 
 
     @property
     def is_ins(self):
-        """returns True if insertion
+        """evaluates if :attr:`~indelpost.Variant.variant_type` is "I".
         """
         return self.variant_type == "I"
 
         
     @property
     def is_indel(self):
-        """returns True if indel
+        """returns True if :attr:`~indelpost.Variant.variant_type` is "I" or "D".
         """
         return self.is_ins or self.is_del
 
 
     @property
     def indel_seq(self):
-        """returns net inserted/deleted sequence. None if substitution.
+        """returns the inserted/deleted sequence for non-complex indels. None for substitutions.
         """
         if self.is_ins:
             return self.alt[len(self.ref) :]
@@ -203,7 +205,7 @@ cdef class Variant:
 
     @property
     def is_leftaligned(self):
-        """returns True if left-aligned
+        """returns True if the indel position is the smallest possible value (left-aligned). 
         """
         if self.ref[-1].upper() != self.alt[-1].upper():
             return True
@@ -213,7 +215,7 @@ cdef class Variant:
     
     @property
     def is_normalized(self):
-        """returns True if left-aligned and parsimonious. 
+        """returns True if left-aligned and the allele representations are minimal. 
         """
         if self.is_leftaligned:
             if len(self.ref) > 1 and len(self.alt) and (self.ref[0].upper() == self.alt[0].upper()):
@@ -376,37 +378,76 @@ cdef class Variant:
 
 
     def left_flank(self, window=50, normalize=False):
+        """extract the left-flanking reference sequence. See also :meth:`~indelpost.Variant.right_flank`.
+
+        Parameters
+        ----------
+        window : int
+            extract the reference sequence [variant_pos - window, variant_pos]. 
+        normalize : bool
+            if True, the normalized indel position is used as the end of the flanking sequence.
+        """ 
         if normalize:
             i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
         else:
             i = self
 
-        lt_flank = i.reference.fetch(i.chrom, max(0, i.pos - window), i.pos)
+        if i.is_non_complex_indel():
+            pos = i.pos
+        else:
+            pos = i.pos - 1
+        
+        lt_flank = i.reference.fetch(i.chrom, max(0, pos - window), pos)
         
         return lt_flank
 
     
     def right_flank(self, window=50, normalize=False):
+        """extract the right-flanking reference sequence. See also :meth:`~indelpost.Variant.left_flank`. 
+
+        Parameters
+        ----------
+        window : int
+            extract the reference sequence [variant_end_pos, variant_end_pos + window].
+        normalize : bool
+            if True, the normalized indel position is used as the start of the flanking sequence.
+        """
         if normalize:
             i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
         else:
             i = self
 
         ref_lim = i.reference.get_reference_length(i.chrom)
-        if i.variant_type == "I":
+        if i.is_non_complex_indel() and i.variant_type == "I":
             rt_flank = i.reference.fetch(i.chrom, i.pos, min(i.pos + window, ref_lim))
         else:
-            event_len = len(i.indel_seq) if "D" else len(i.ref)
+            if i.is_non_complex_indel() and i.variant_type == "D":
+                event_len = len(i.indel_seq)
+            else:
+                event_len = len(i.ref) - 1  
             rt_flank = i.reference.fetch(i.chrom, i.pos + event_len, min(i.pos + event_len + window, ref_lim))
 
         return rt_flank
 
     
     def count_repeats(self, by_repeat_unit=True):
-        if by_repeat_unit:
-            seq = to_minimal_repeat_unit(self.indel_seq)
+        """counts repeats in the flanking reference sequences. The search window is
+        defined by :meth:`~indelpost.Variant.left_flank` and :meth:`~indelpost.Variant.right_flank`.
+        
+        Parameters
+        ----------
+        by_repeat_unit : bool
+            count by the smallest tandem repeat unit. For example, the indel sequence "ATATATAT" has
+            tandem units "ATAT" and "AT". The occurrent of the "AT" units is counted if True (default).
+        """ 
+
+        if self.is_non_complex_indel():
+            seq = self.indel_seq
         else:
-            seg = self.indel_seq
+            seq = self.alt
+        
+        if by_repeat_unit:
+            seq = to_minimal_repeat_unit(seq)
 
         lt_flank = self.left_flank()
         lr_repeat = repeat_counter(seq, lt_flank[::-1])
@@ -417,6 +458,8 @@ cdef class Variant:
     
 
     def is_non_complex_indel(self):
+        """returns True only if non-complex indel (False if complex indel or substitution).
+        """
         i = self.normalize()
         ref, alt = i.ref, i.alt
         if len(ref) == len(alt):
@@ -433,7 +476,20 @@ cdef class Variant:
 
 
     def decompose_complex_variant(self, match_score=2, mismatch_penalty=2, gap_open_penalty=4, gap_extension_penalty=0):
-        
+        """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ of non-complex :class:`~indelpost.Variant` objects decomposed by the Smith-Waterman local alignment 
+        with a given set of score/penalty.
+
+        Parameters
+        ----------
+        match_score : int
+            default to 2.
+        mismatch_penalty : int
+            default to 2.
+        gap_open_penalty : int
+            default to 4.
+        gap_extension_penalty : int
+            default to 0.    
+        """
         if self.is_non_complex_indel():
             return [self]
         
@@ -470,6 +526,3 @@ cdef class Variant:
                 variants.append(Variant(self.chrom, snv["pos"], snv["ref"], snv["alt"], self.reference))
              
         return variants
-
-        
-        
