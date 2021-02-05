@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from collections import OrderedDict, Counter
 
 from .utilities import *
-from .variant import Variant
+from .variant import Variant, NullVariant
 from .localn import findall_mismatches
 
 
@@ -27,19 +27,19 @@ def phase_nearby_variants(
 
     # no indel reads or contig construction failure
     if contig.failed:
-        return None
+        return NullVariant(target.chrom, target.pos, target.reference)
     
-    # QC check
-    pileup_mapq_low_20 = np.percentile([read["mapq"] for read in pileup], 20)
-    if contig.mapq < mapq_thresh or  pileup_mapq_low_20 < mapq_thresh or contig.is_target_right_aligned:
-        return None
-    elif (
-          seq_complexity(contig, snv_neighborhood, indel_neighborhood)
-          < sequence_complexity_thresh
-    ):
-        return None
-    elif low_qual_fraction(pileup) > low_qual_frac_thresh:
-        return None
+    # QC check #consider abolish QC check
+    #pileup_mapq_low_20 = np.percentile([read["mapq"] for read in pileup], 20)
+    #if contig.mapq < mapq_thresh or  pileup_mapq_low_20 < mapq_thresh or contig.is_target_right_aligned:
+    #    return None
+    #elif (
+    #      seq_complexity(contig, snv_neighborhood, indel_neighborhood)
+    #      < sequence_complexity_thresh
+    #):
+    #    return None
+    #elif low_qual_fraction(pileup) > low_qual_frac_thresh:
+    #    return None
      
     indexed_contig = contig.contig_dict
     
@@ -114,13 +114,6 @@ def phase_nearby_variants(
             remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
 
     cvar = greedy_phasing(target, indexed_contig)
-    
-    #if (
-    #    len(cvar.ref) > 14
-    #    and len(cvar.alt) > 14
-    #    and SequenceMatcher(None, cvar.ref, cvar.alt).ratio() > 0.75
-    #):
-    #    return make_target_obj_from_contig(target, indexed_contig)
     
     if cvar != target:
         return cvar

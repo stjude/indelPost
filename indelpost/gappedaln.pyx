@@ -24,7 +24,6 @@ def find_by_normalization(
     Returns:
         annoated pileup (list): a list of dictized read (dict) 
     """
-
     pileup = [is_target_by_normalization(read, target) for read in pileup]
     
     target, extension_penalty_used = seek_larger_gapped_aln(
@@ -90,7 +89,7 @@ def is_target_by_normalization(read, target):
             read["lt_cigar"], read["rt_cigar"] = split_cigar(
                 read["cigar_string"], target.pos, read["read_start"]
             )
-
+    
     return read
 
 
@@ -182,7 +181,7 @@ def seek_larger_gapped_aln(
 ):
 
     read, center_score = get_most_centered_read(target, pileup)
-
+    
     if not read:
         return target, gap_extension_penalty
     else:

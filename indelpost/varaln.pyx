@@ -24,7 +24,7 @@ from indelpost.pileup cimport make_pileup
 from indelpost.utilities cimport split
 from indelpost.contig cimport Contig 
 
-from indelpost.variant cimport Variant
+from indelpost.variant cimport Variant, NullVariant
 
 from pysam.libcalignmentfile cimport AlignmentFile
 
@@ -286,7 +286,7 @@ cdef class VariantAlignment:
                     return self.__parse_pileup(contig=contig, retargeted=True)
 
                 # no target in this pileup
-                else: 
+                else:
                     return pileup, contig
 
         # soft-clip realn & SW realn
@@ -370,6 +370,7 @@ cdef class VariantAlignment:
         
         return pileup, contig
     
+
     def __eq__(self, other):
         # alignment equivalence
         my_contig, other_contig = self.contig, other.contig
@@ -378,17 +379,22 @@ cdef class VariantAlignment:
             return False
 
         # check eq in phased form
-        phasing_mode = "no_hard_no_complex"
+        phasing_mode = "local"
         my_phased, other_phased = self.phase(how=phasing_mode), other.phase(how=phasing_mode) 
          
         return (my_phased == other_phased)
 
+
     def __hash__(self):
-        hashable = self.phase(how="no_hard_no_complex")
+        hashable = self.phase(how="local")
         return hash(hashable)
 
+
     def target_indel(self):
-        return self.__target
+        if self.contig.failed:
+            return NullVariant(self.__target.chrom, self.__target.pos, self.__target.reference)
+        else:
+            return self.__target
 
     
     def fetch_reads(self, str how="target"):
@@ -490,14 +496,16 @@ cdef class VariantAlignment:
         indel_repeat_thresh=10,
         mutation_density_thresh=0.05,
         sequence_complexity_thresh=0.0,
-        how="complex",
+        how="local",
     ):
         if how == "complex":
             hard, to_complex = False, True
         elif how == "greedy":
             hard, to_complex = True, False
-        else:
+        elif how == "local":
             hard, to_complex = False, False
+        else:
+            raise Exception("phasing stragety must be either of local, greedy, complex")
         
         return phase_nearby_variants(
             self.__target,

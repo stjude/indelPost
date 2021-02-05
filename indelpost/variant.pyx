@@ -6,6 +6,34 @@ from .localn import make_aligner, align, findall_indels
 from pysam.libcfaidx cimport FastaFile
 from pysam.libcbcf cimport VariantFile
 
+
+cdef class NullVariant:
+    """This class represents a variant that does not exist. 
+    Boolean expression evaluates to false. Alleles are always "NNN".
+    
+    Parameters
+    ----------
+    chrom : string
+        contig name.
+
+    pos : integer
+        1-based genomic position
+
+    reference : pysam.FastaFile
+        reference FASTA file supplied as
+        `pysam.FastaFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.FastaFile>`__ object.
+    """
+    def __cinit__(self, str chrom, int pos, FastaFile reference):
+        self.chrom = chrom
+        self.pos = pos
+        self.ref = "NNN"
+        self.alt = "NNN"
+        self.reference = reference
+
+    def __bool__(self):
+        return False
+
+
 cdef class Variant:
     """This class accepts a VCF-style variant representation as input. 
     Equality holds between :class:`~indelpost.Variant` objects 
@@ -263,7 +291,18 @@ cdef class Variant:
                 res.append(i)
         return res
 
+
+    def _generate_equivalents_private(self):
+        
+        if self.is_non_complex_indel():
+            return self.generate_equivalents()
+        else:
+            # define complex indel at the start and end of the deleted sequence 
+            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
+            j = Variant(self.chrom, self.pos + len(self.ref), self.ref, self.alt, self.reference)
+            return [i, j]
     
+
     def query_vcf(self, VariantFile vcf, matchby="normalization", window=50, indel_only=True, as_dict=True):
         """finds VCF records matching this :class:`~indelpost.Variant` object.
 

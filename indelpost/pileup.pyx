@@ -625,7 +625,7 @@ def retarget(
     elif len(target.indel_seq) < 2 and not target in candidates:
         return None
     
-    u_candidates = to_flat_list([var.generate_equivalents() for var in set(candidates)])
+    u_candidates = to_flat_list([var._generate_equivalents_private() for var in set(candidates)])
     u_candidates.sort(key=lambda x: abs(x.pos - target.pos))
     candidate_seqs = [var.indel_seq for var in u_candidates]
     
