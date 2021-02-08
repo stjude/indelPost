@@ -532,7 +532,6 @@ def is_non_spurious_overhang(
 
 
 def retarget(
-    perform_retarget,
     target,
     pileup,
     window,
@@ -544,9 +543,6 @@ def retarget(
     gap_open_penalty,
     gap_extension_penalty,
 ):
-    #if not perform_retarget:
-    #    return None
-
     target_seq, target_type = target.indel_seq, target.variant_type
 
     non_refs = [

@@ -14,7 +14,6 @@ def phase_nearby_variants(
     contig,
     pileup,
     mapq_thresh,
-    low_qual_frac_thresh,
     basequalthresh,
     snv_neighborhood,
     indel_neighborhood,
@@ -618,8 +617,3 @@ def get_end_most_indel(indexed_contig, target):
         if len(v[0]) != len(v[1]):
             return Variant(target.chrom, k, v[0], v[1], target.reference)       
 
-
-
-
-
-    

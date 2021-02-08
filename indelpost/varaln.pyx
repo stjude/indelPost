@@ -31,7 +31,12 @@ from pysam.libcalignmentfile cimport AlignmentFile
 random.seed(123)
 
 cdef class VariantAlignment:
-    """Class to work with indels in the BAM file.
+    """This class accepts the target indel as :class:`~indelpost.Variant` 
+    and the BAM file as `pysam.AlignmentFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.AlignmentFile>`__ .
+    Upon creation, the target indel is searched through realignment.
+    Evaluation of the equality between :class:`~indelpost.VariantAlignment` objects triggers local-phasing around the indels 
+    to test the alignment identity. 
+
 
     Parameters
     ----------
@@ -43,27 +48,50 @@ cdef class VariantAlignment:
         `pysam.AlignmentFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.AlignmentFile>`__ object.
 
     window : integer
-        indels will ba analyzed within the input indel position +/- window. Default to 50.
+        analyzes region [input_indel_pos - window (defalt 50), input_indel_pos + window].
 
     exclude_duplicates : bool
-        True to exclude reads with the 
-        `MarkDuplicate <https://broadinstitute.github.io/picard/command-line-overview.html#MarkDuplicates>`__ signature.
-        Default to True. 
-
-    retarget : bool
-        True to re-target the target if the input indel is not found after left-aligning the pileup.
-        Default to True
+        True (default) to exclude reads marked duplicate by
+        `MarkDuplicate <https://broadinstitute.github.io/picard/command-line-overview.html#MarkDuplicates>`__. 
     
-    retarget_window : integer
-        retarggeting will be performed within the input indel position +/- retarget_window. Default to 30.
+    downsample_threshold : integer
+        downsamples to the threshold if the covearge at the input locus exceeds the threshold (default to 3000).
+        
+    mapping_quality_threshold : integer
+        reads with a mapping quality (MAPQ) < the threshold (default 1) will be filtered. 
+        
+    base_quality_threshold : integer
+        non-reference base-calls with a quality score < the threshold (default 20) will be masked as "N" in the analysis.
+
+    retarget_search_window : integer
+        re-targets the input indel in [input_indel_pos - window (defalt 30), input_indel_pos + window] if the exact match is not found after realignment.
+
+    retarget_similarity_cutoff : float
+        re-targets to the indel sequence with a highest 
+        `Ratcliff/Obershelp similarity score <https://docs.python.org/3/library/difflib.html#difflib.get_close_matches>`__ > cutoff (defalt 0.7).
+   
+    match_score : integer
+        score (default 2) for matched bases in Smith-Waterman local alignment.
+
+    mismatch_penaly : interger
+        penalty (default 2) for mismatched bases in Smith-Waterman local alignment.
+    
+    gap_open_penalty : integer
+        penalty (default 3) to creat a gap in Smith-Waterman local alignment.
+    
+    gap_extension_penalty : integer 
+        penalty (default 1) to expend a created gap by one base in Smith-Waterman local alignment.
+
+    auto_adjust_extension_penalty : bool
+        True (default) to auto-adjust the gap open and extend penalties to find the input indel by realignment.
     """
     cdef Variant target, __target
     cdef readonly AlignmentFile bam
     cdef int window, retarget_window, mapqthresh
     cdef int downsamplethresh, basequalthresh, match_score
     cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
-    cdef float retarget_cutoff, __sample_factor, low_qual_frac_thresh
-    cdef bint exclude_duplicates, retarget, perform_retarget, auto_adjust_extension_penalty
+    cdef float retarget_cutoff, __sample_factor, 
+    cdef bint exclude_duplicates, auto_adjust_extension_penalty
     cdef list __pileup
     cdef readonly is_spurious_overhang
     cdef readonly Contig contig
@@ -74,13 +102,11 @@ cdef class VariantAlignment:
         AlignmentFile bam,
         int window=50,
         bint exclude_duplicates=True, 
-        bint retarget=True,
-        int retarget_window=30,
-        float retarget_cutoff=0.7,
-        int mapqthresh=1,
-        float low_qual_frac_thresh=0.2,
-        int downsamplethresh=30000,
-        int basequalthresh=20,
+        int retarget_search_window=30,
+        float retarget_similarity_cutoff=0.7,
+        int mapping_quality_threshold=1,
+        int downsample_threshold=3000,
+        int base_quality_threshold=20,
         int match_score=2,
         int mismatch_penalty=2,
         int gap_open_penalty=3,
@@ -107,13 +133,11 @@ cdef class VariantAlignment:
         self.bam = bam
         self.window = window
         self.exclude_duplicates = exclude_duplicates
-        self.perform_retarget = retarget
-        self.retarget_window = retarget_window
-        self.retarget_cutoff = retarget_cutoff
-        self.mapqthresh = mapqthresh
-        self.low_qual_frac_thresh = low_qual_frac_thresh
-        self.downsamplethresh = downsamplethresh  # should allow > 1000
-        self.basequalthresh = basequalthresh
+        self.retarget_window = retarget_search_window
+        self.retarget_cutoff = retarget_similarity_cutoff
+        self.mapqthresh = mapping_quality_threshold
+        self.downsamplethresh = downsample_threshold 
+        self.basequalthresh = base_quality_threshold
         self.match_score = match_score
         self.mismatch_penalty = mismatch_penalty
         self.gap_open_penalty = gap_open_penalty
@@ -215,7 +239,6 @@ cdef class VariantAlignment:
                         return pileup, contig
                     else:
                         res = grid_search(
-                            self.perform_retarget,
                             self.__target, 
                             non_spurious_overhangs,
                             self.window,
@@ -235,7 +258,6 @@ cdef class VariantAlignment:
                             return pileup, contig
                 else:
                     res = grid_search(
-                        self.perform_retarget,
                         self.__target,
                         pileup,
                         self.window,
@@ -307,7 +329,6 @@ cdef class VariantAlignment:
                        )
                 
                 res = grid_search(
-                        self.perform_retarget,
                         self.__target,
                         nontarget,
                         self.window,
@@ -512,7 +533,6 @@ cdef class VariantAlignment:
             self.contig,
             self.__pileup,
             self.mapqthresh,
-            self.low_qual_frac_thresh,
             self.basequalthresh,
             snv_neighborhood,
             indel_neighborhood,
@@ -819,7 +839,6 @@ def generate_grid (auto_adjust_extension_penalty,
 
 
 def grid_search(
-    perform_retarget,
     target, 
     pileup,
     window,
@@ -835,7 +854,6 @@ def grid_search(
     responses, scores, hs = [], [], []
     while h < len(grid):
         res = retarget(
-            perform_retarget,
             target,
             pileup,
             window,

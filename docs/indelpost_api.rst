@@ -1,13 +1,15 @@
-Processing indel calls
-======================
+API
+===
+
+indel processing on the reference
+---------------------------------
 .. autoclass:: indelpost.Variant()
    :members:
    :exclude-members: chrom, pos, ref, alt, reference
 
 .. autoclass:: indelpost.NullVariant()
 
-
-Processing indel alignments
-===========================
+indel processing on alignment files (BAM)
+-----------------------------------------
 .. autoclass:: indelpost.VariantAlignment()
    :members:

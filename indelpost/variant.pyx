@@ -8,8 +8,8 @@ from pysam.libcbcf cimport VariantFile
 
 
 cdef class NullVariant:
-    """This class represents a variant that does not exist. 
-    Boolean expression evaluates to false. Alleles are always "NNN".
+    """This class is returned when :class:`~indelpost.VariantAlignment` cannot find the 
+    target indel in the BAM file. Boolean expression evaluates to False. Alleles are always "NNN".
     
     Parameters
     ----------
@@ -37,7 +37,7 @@ cdef class NullVariant:
 cdef class Variant:
     """This class accepts a VCF-style variant representation as input. 
     Equality holds between :class:`~indelpost.Variant` objects 
-    if they are indentical after normalized. 
+    if they are indentical in the normalized form.  
 
     Parameters
     ----------
@@ -122,10 +122,9 @@ cdef class Variant:
 
     @property
     def variant_type(self):
-        """returns "I" if the net allele-length change is gain, 
-        "D" if the net change is loss, 
-        "S" if signle-nucleotide substitution (zero net change), 
-        and "M" if multi-nucleotide substitution (zero net change). 
+        """ returns "I" if the net allele-length change is gain, "D" if loss, 
+            "S" if signle-nucleotide substitution (zero net change), "M" if multi-nucleotide substitution 
+            (zero net change). 
         """ 
         
         cdef int r_len, a_len
@@ -227,7 +226,7 @@ cdef class Variant:
 
 
     def normalize(self, inplace=False):
-        """performes normalization on :class:`~indelpost.Variant` object.
+        """normalizes :class:`~indelpost.Variant` object.
         
         Parameters
         ----------
@@ -306,7 +305,8 @@ cdef class Variant:
     
 
     def query_vcf(self, VariantFile vcf, matchby="normalization", window=50, indel_only=True, as_dict=True):
-        """finds VCF records matching this :class:`~indelpost.Variant` object.
+        """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ of VCF records matching 
+        this :class:`~indelpost.Variant` object as `dictionary <https://docs.python.org/3/library/stdtypes.html#dict>`__ (default).
 
         Parameters
         ----------
@@ -316,12 +316,18 @@ cdef class Variant:
             `pysam.VariantFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.VariantFile>`__ object.
 
         matchby : string
-            "normalization" (default) matches by normalizing VCF records. "locus" matches by the normalized genomic locus.  
-            "exact" finds the exact matche without normalization. 
+            - "normalization" (default) matches by normalizing VCF records. 
+            - "locus" matches by the normalized genomic locus.  
+            - "exact" finds the exact matche without normalization. 
             
         window : integer
-            VCF records  
-
+            searches the VCF records in indel position +/- window.
+            
+        indel_only : bool
+            returns matched indel and SNV records if False. Meaningful when matchby is "locus".
+               
+        as_dict : bool
+            returns `pysam.VariantRecord <https://pysam.readthedocs.io/en/latest/api.html#pysam.VariantRecord>`__ if False.
         """
         matchbys = ["normalization", "locus", "exact"]
         if not matchby in matchbys:
@@ -378,7 +384,7 @@ cdef class Variant:
 
 
     def left_flank(self, window=50, normalize=False):
-        """extract the left-flanking reference sequence. See also :meth:`~indelpost.Variant.right_flank`.
+        """extracts the left-flanking reference sequence. See also :meth:`~indelpost.Variant.right_flank`.
 
         Parameters
         ----------
@@ -403,7 +409,7 @@ cdef class Variant:
 
     
     def right_flank(self, window=50, normalize=False):
-        """extract the right-flanking reference sequence. See also :meth:`~indelpost.Variant.left_flank`. 
+        """extracts the right-flanking reference sequence. See also :meth:`~indelpost.Variant.left_flank`. 
 
         Parameters
         ----------
@@ -431,14 +437,14 @@ cdef class Variant:
 
     
     def count_repeats(self, by_repeat_unit=True):
-        """counts repeats in the flanking reference sequences. The search window is
+        """counts indel repeats in the flanking reference sequences. The search window is
         defined by :meth:`~indelpost.Variant.left_flank` and :meth:`~indelpost.Variant.right_flank`.
         
         Parameters
         ----------
         by_repeat_unit : bool
             count by the smallest tandem repeat unit. For example, the indel sequence "ATATATAT" has
-            tandem units "ATAT" and "AT". The occurrent of the "AT" units is counted if True (default).
+            tandem units "ATAT" and "AT". The occurrence of "AT" will be counted if True (default).
         """ 
 
         if self.is_non_complex_indel():
@@ -476,7 +482,8 @@ cdef class Variant:
 
 
     def decompose_complex_variant(self, match_score=2, mismatch_penalty=2, gap_open_penalty=4, gap_extension_penalty=0):
-        """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ of non-complex :class:`~indelpost.Variant` objects decomposed by the Smith-Waterman local alignment 
+        """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ of 
+        non-complex :class:`~indelpost.Variant` objects decomposed by the Smith-Waterman local alignment 
         with a given set of score/penalty.
 
         Parameters
