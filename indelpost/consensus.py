@@ -59,8 +59,8 @@ def make_consensus(target, targetpileup, basequalthresh):
             rt_indexed.append(rt)
         
         except:
+            #this is for debugging
             #traceback.print_exc() 
-            #for debugging
             pass
 
     

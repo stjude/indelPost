@@ -1,3 +1,4 @@
+# cython: embedsignature=True
 from indelpost.variant cimport Variant
 
 cdef class Contig:

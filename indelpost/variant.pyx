@@ -388,7 +388,7 @@ cdef class Variant:
 
         Parameters
         ----------
-        window : int
+        window : integer
             extract the reference sequence [variant_pos - window, variant_pos]. 
         normalize : bool
             if True, the normalized indel position is used as the end of the flanking sequence.
@@ -413,7 +413,7 @@ cdef class Variant:
 
         Parameters
         ----------
-        window : int
+        window : integer
             extract the reference sequence [variant_end_pos, variant_end_pos + window].
         normalize : bool
             if True, the normalized indel position is used as the start of the flanking sequence.
@@ -488,13 +488,13 @@ cdef class Variant:
 
         Parameters
         ----------
-        match_score : int
+        match_score : integer
             default to 2.
-        mismatch_penalty : int
+        mismatch_penalty : integer
             default to 2.
-        gap_open_penalty : int
+        gap_open_penalty : integer
             default to 4.
-        gap_extension_penalty : int
+        gap_extension_penalty : integer
             default to 0.    
         """
         if self.is_non_complex_indel():

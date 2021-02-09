@@ -1,3 +1,4 @@
+# cython: embedsignature=True
 #cython: profile=False
 
 cimport cython
@@ -48,7 +49,7 @@ cdef class VariantAlignment:
         `pysam.AlignmentFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.AlignmentFile>`__ object.
 
     window : integer
-        analyzes region [input_indel_pos - window (defalt 50), input_indel_pos + window].
+        analyzes region input_indel_pos +/- window (defalt 50).
 
     exclude_duplicates : bool
         True (default) to exclude reads marked duplicate by
@@ -64,11 +65,11 @@ cdef class VariantAlignment:
         non-reference base-calls with a quality score < the threshold (default 20) will be masked as "N" in the analysis.
 
     retarget_search_window : integer
-        re-targets the input indel in [input_indel_pos - window (defalt 30), input_indel_pos + window] if the exact match is not found after realignment.
+        attempts to re-target in input_indel_pos +/- window (defalt 30) if the exact match is not found after realignment.
 
     retarget_similarity_cutoff : float
         re-targets to the indel sequence with a highest 
-        `Ratcliff/Obershelp similarity score <https://docs.python.org/3/library/difflib.html#difflib.get_close_matches>`__ > cutoff (defalt 0.7).
+        `Ratcliff/Obershelp similarity score <https://docs.python.org/3/library/difflib.html#difflib.get_close_matches>`__ > cutoff (default 0.7).
    
     match_score : integer
         score (default 2) for matched bases in Smith-Waterman local alignment.
@@ -77,7 +78,7 @@ cdef class VariantAlignment:
         penalty (default 2) for mismatched bases in Smith-Waterman local alignment.
     
     gap_open_penalty : integer
-        penalty (default 3) to creat a gap in Smith-Waterman local alignment.
+        penalty (default 3) to create a gap in Smith-Waterman local alignment.
     
     gap_extension_penalty : integer 
         penalty (default 1) to expend a created gap by one base in Smith-Waterman local alignment.
@@ -85,17 +86,6 @@ cdef class VariantAlignment:
     auto_adjust_extension_penalty : bool
         True (default) to auto-adjust the gap open and extend penalties to find the input indel by realignment.
     """
-    cdef Variant target, __target
-    cdef readonly AlignmentFile bam
-    cdef int window, retarget_window, mapqthresh
-    cdef int downsamplethresh, basequalthresh, match_score
-    cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
-    cdef float retarget_cutoff, __sample_factor, 
-    cdef bint exclude_duplicates, auto_adjust_extension_penalty
-    cdef list __pileup
-    cdef readonly is_spurious_overhang
-    cdef readonly Contig contig
-    
     def __cinit__(
         self,
         Variant target,
@@ -409,16 +399,37 @@ cdef class VariantAlignment:
     def __hash__(self):
         hashable = self.phase(how="local")
         return hash(hashable)
+   
 
-
-    def target_indel(self):
+    def get_contig(self):
+        """returns :class:`~indelpost.Contig` object built from reads supporting the target indel.
+        None is returned if no target is found.
+        """
+        return self.contig
+         
+    
+    def get_target_indel(self):
+        """returns :class:`~indelpost.Variant` object representing the actual target indel analyzed. 
+        The target indel may be different from the input indel due to the internal realignment. 
+        :class:`~indelpost.NullVariant` is returned when no target is found.
+        """
         if self.contig.failed:
             return NullVariant(self.__target.chrom, self.__target.pos, self.__target.reference)
         else:
             return self.__target
 
     
-    def fetch_reads(self, str how="target"):
+    def fetch_reads(self, how='target'):
+        """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ 
+        of `pysam.AlignedSegment <https://pysam.readthedocs.io/en/latest/api.html#pysam.AlignedSegment>`__ objects, 
+        depending on the strategy specified. 
+
+        Parameters
+        ----------
+            how : string
+                specifies the read fetch strategy. "target" (default) to retrieve reads supporting the target.
+                "non_target" for reads w/o target. "covering" for reads covering the locus w/ and w/o the target.
+        """
         
         if how == "target":
             return [read["read"] for read in self.__pileup if read["is_target"]]
@@ -429,19 +440,26 @@ cdef class VariantAlignment:
         elif how == "covering":
             return [read["read"] for read in self.__pileup if read["is_covering"]]
         else:
-            return None       
+            raise Exception("fetch stragety must be either of target, non_target, covering")
             
 
     def count_alleles(
-        self, bint fwrv=False, bint by_fragment=False, int qualitywindow=0, int qualitythresh=0
+        self, fwrv=False, by_fragment=False, quality_window=None, quality_threshold=None
     ):
-        """Unique-count reads with and without target indel
+        """returns a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ of
+        read counts:  (#reads w/o target indel, #reads w/ target indel).
 
-        Args:
-            pileup (list): list of dictized read (dict)
-            target_indel (Variant)
-        Returns:
-        allele counts (tuple): (ref_count, alt_count)
+        Parameters
+        ----------
+            fwrv : bool
+                breaks down into the forward and reverse read counts.
+                ( (fw w/o, rv w/o), (fw w/, rv w/) ).
+            by_fragment : bool
+                counts by fragment. Overlapping fw and rv reads are counted as one.
+            quality_window : integer
+                specifies the range of base call quality filter. indel pos +/- quality_window. 
+            quality_threshold : integer
+                filters reads with the median base call quality in indel pos +/- quality_window < quality_threshold.
         """
 
         cdef dict read
@@ -450,11 +468,11 @@ cdef class VariantAlignment:
         margin = min(indel_len / 2, 5) if indel_len > 3 else indel_len
 
         reads = self.__pileup
-        if qualitywindow and qualitythresh:
+        if quality_window and quality_threshold:
             reads = [
                 read
                 for read in reads
-                if is_quality_read(read, pos, qualitywindow, qualitythresh)
+                if is_quality_read(read, pos, quality_window, quality_threshold)
             ]
 
         fw_target = [
@@ -600,6 +618,7 @@ cdef list preprocess_for_contig_construction(
 
     targetpileup = [read for read in pileup if read["is_target"] and not read["is_dirty"]]
     
+    
     if not targetpileup:
         return targetpileup
     
@@ -653,12 +672,13 @@ cdef list preprocess_for_contig_construction(
         
         targetpileup = [read for read in targetpileup if read is not None and (read.get("lt_cigar", None) and read.get("rt_cigar", None))]
         
+         
         _targetpileup = [
             read for read in targetpileup if read.get("cigar_updated", False) 
         ]
         
-        if len(_targetpileup) > 2:
-            _targetpileup = _targetpileup[: min(20, int(len(_targetpileup) / 1.5 ))]
+        #if len(_targetpileup) > 2:
+        #    _targetpileup = _targetpileup[: min(20, int(len(_targetpileup) / 1.5 ))]
         
         if _targetpileup:    
             targetpileup = _targetpileup
