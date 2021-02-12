@@ -304,6 +304,25 @@ cdef class Variant:
             return [i, j]
     
 
+    def _get_indel_seq(self, how=None):
+        if self.is_non_complex_indel():
+            return self.indel_seq
+        else:
+            if how == "I":
+                return self.alt[1:]
+            elif how == "D":
+                return self.ref[1:]
+    
+    def _reduce_complex_indel(self, to=None):
+        if self.is_non_complex_indel():
+            return NullVariant(self.chrom, self.pos, self.reference)
+        else:
+            if to == "I":
+                return Variant(self.chrom, self.pos, self.alt[0], self.alt, self.reference)
+            elif to == "D":
+                return Variant(self.chrom, self.pos, self.ref, self.ref[0], self.reference)
+         
+    
     def query_vcf(self, VariantFile vcf, matchby="normalization", window=50, indel_only=True, as_dict=True):
         """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ of VCF records matching 
         this :class:`~indelpost.Variant` object as `dictionary <https://docs.python.org/3/library/stdtypes.html#dict>`__ (default).

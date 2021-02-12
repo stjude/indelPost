@@ -24,10 +24,27 @@ def most_common(lst):
 def get_gap_ptrn(read):
     return "".join([c for c in read["cigar_list"] if "D" in c or "I" in c])
 
+def get_gap_ptrn2(read):
+    ptrn = ""
+    pos = read["aln_start"]
+    for cigar in read["cigar_list"]:
+        event, event_len = cigar[-1], int(cigar[:-1])
+        if event in ("M", "X", "=", "N"):
+            pos += event_len
+        elif event in ["I", "D"]:
+            ptrn += "{}@{}".format(cigar, pos-1)
+            if event == "D":
+                pos += event_len
+    return ptrn
+        
 def most_common_gap_pattern(targetpileup):
     ptrns = [get_gap_ptrn(read) for read in targetpileup]
     return most_common(ptrns)
  
+def most_common_gap_ptrn(targetpileup):
+    ptrns = [get_gap_ptrn2(read) for read in targetpileup]
+    return most_common(ptrns)
+
 cpdef list to_flat_list(list lst_of_lst):
     cdef list lst
     return [i for lst in lst_of_lst for i in lst]

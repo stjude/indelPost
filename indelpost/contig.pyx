@@ -218,3 +218,37 @@ cdef class Contig:
             )
 
             return conseq
+
+def compare_contigs(orig_contig, new_contig, target_pos):
+    orig_len = len(orig_contig.get_reference_seq())
+    orig_clip_rate = orig_contig.qc_stats["clip_rate"]
+    
+    new_len = len(new_contig.get_reference_seq())
+    new_clip_rate = new_contig.qc_stats["clip_rate"]
+    
+    orig_score = contig_centerness_score(orig_contig, target_pos)
+    new_score = contig_centerness_score(new_contig, target_pos)     
+
+    if new_clip_rate > 0.1:
+        return orig_contig
+    
+    condition1 = (new_len <= orig_len)
+    condition2 = (new_clip_rate > orig_clip_rate and new_clip_rate >=0.03)
+    condition3 = (orig_score < new_score)
+    
+    if sum([condition1, condition2, condition3]) >= 2:
+        return orig_contig
+    else:
+        return new_contig
+   
+def contig_centerness_score(contig, target_pos):
+    lt_cnt, rt_cnt = 0, 0
+    for k, v in contig.contig_dict.items():
+        if v[0] and v[1]:
+            if k <= target_pos:
+                lt_cnt += 1
+            else:
+                rt_cnt += 1
+    
+    return 0.5 - min(lt_cnt, rt_cnt) /(lt_cnt + rt_cnt) 
+

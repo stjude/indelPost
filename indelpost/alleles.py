@@ -13,13 +13,11 @@ def phase_nearby_variants(
     target,
     contig,
     pileup,
-    mapq_thresh,
     basequalthresh,
     snv_neighborhood,
     indel_neighborhood,
     indel_repeat_thresh,
     mut_frac_thresh,
-    sequence_complexity_thresh,
     hard,
     to_complex,
 ):
@@ -336,7 +334,7 @@ def variants_in_non_target_pileup(pileup, target, basequalthresh, to_complex):
     nontarget_pileup = [
         findall_mismatches(read, end_trim=10)
         for read in pileup
-        if not read["is_target" ] and read["is_covering"]
+        if not read["is_target" ] and read["is_covering"] and not read["is_dirty"]
     ]
             
     if not nontarget_pileup:
@@ -353,6 +351,13 @@ def variants_in_non_target_pileup(pileup, target, basequalthresh, to_complex):
         < target.pos
         < read["covering_subread"][1] - margin
     ]
+    
+    indels = [
+        indel 
+        for indel, cnt in Counter(indels).items() 
+        if (cnt > 2 and cnt/ len(nontarget_pileup) > 0.15)
+        or cnt > 5
+    ]  
     
     mismatches = [
         Variant(target.chrom, v[0], v[1], v[2], target.reference)

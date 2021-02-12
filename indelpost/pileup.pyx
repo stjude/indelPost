@@ -590,22 +590,32 @@ def retarget(
     candidates, candidate_reads, candidate_ref_seqs, candidate_ref_starts, candidate_aligners = [], [], [], [], []
     for read, aln, ref_seq, ref_start, aligner in zip(non_refs, ref_alns, ref_seqs, ref_starts, aligners):
         genome_aln_pos = ref_start + aln.reference_start
-            
+        
         gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
             
-        if gap_cnt < 4:
+        if gap_cnt < 6:
             indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
-            indels = [
+            
+            positions = [d["pos"] for d in indels]
+            complex_positions = set([p for p in positions if positions.count(p) == 2])
+            
+            target_type_indels = [
                 indel for indel in indels if indel["indel_type"] == target_type
             ]
             
-            for indel in indels:
-                if target_type == "I":
-                    ref = indel["lt_ref"][-1]
-                    alt = ref + indel["indel_seq"]
+            for indel in target_type_indels:
+                if indel["pos"] in complex_positions:
+                    complex_del = [jndel for jndel in indels if jndel["pos"] == indel["pos"] and jndel["indel_type"] == "D"][0]
+                    complex_ins = [jndel for jndel in indels if jndel["pos"] == indel["pos"] and jndel["indel_type"] == "I"][0]
+                    ref = complex_del["lt_ref"][-1] + complex_del["del_seq"]
+                    alt = complex_ins["lt_ref"][-1] + complex_ins["indel_seq"]
                 else:
-                    alt = indel["lt_ref"][-1]
-                    ref = alt + indel["del_seq"]
+                    if target_type == "I":
+                        ref = indel["lt_ref"][-1]
+                        alt = ref + indel["indel_seq"]
+                    else:
+                        alt = indel["lt_ref"][-1]
+                        ref = alt + indel["del_seq"]
                
                 candidates.append(
                     Variant(target.chrom, indel["pos"], ref, alt, target.reference)
@@ -623,7 +633,7 @@ def retarget(
     
     u_candidates = to_flat_list([var._generate_equivalents_private() for var in set(candidates)])
     u_candidates.sort(key=lambda x: abs(x.pos - target.pos))
-    candidate_seqs = [var.indel_seq for var in u_candidates]
+    candidate_seqs = [var._get_indel_seq(how=target_type) for var in u_candidates]
     
     best_match = get_close_matches(
         target.indel_seq, candidate_seqs, n=1, cutoff=cutoff
@@ -634,12 +644,31 @@ def retarget(
         match_score = SequenceMatcher(None, target.indel_seq, best_seq).ratio()
         
         idx = candidate_seqs.index(best_seq)
-        idx2 = candidates.index(u_candidates[idx])
-        candidate = candidates[idx2]
-        
-        if abs(target.pos - candidate.pos) < within:
+        hit = u_candidates[idx]
+         
+        if abs(target.pos - hit.pos) < within:
+
+            try:
+                idx2 = candidates.index(hit)  #get original representation, do not normalize here.
+            except:
+                hit.pos = hit.pos - len(hit.ref)
+                idx2 = candidates.index(hit)
+            candidate = candidates[idx2]
             idx = [i for i, var in enumerate(candidates) if var == candidate]
             
+            # check if the candidate can be del/ins component of a complex indel
+            if candidate.is_non_complex_indel():
+                complex_candidates = [var for var in set(candidates) if not var.is_non_complex_indel()]
+                if complex_candidates:
+                    for cplx_candidate in complex_candidates:
+                        reduced = cplx_candidate._reduce_complex_indel(to=target_type)
+                        if candidate == reduced:
+                            idx = [i for i, var in enumerate(candidates) if var == cplx_candidate]
+                            candidate = reduced
+                            break
+            else:
+                candidate = candidate._reduce_complex_indel(to=target_type)
+
             candidate_reads = [candidate_reads[i] for i in idx]
             candidate_ref_seqs = [candidate_ref_seqs[i] for i in idx]
             candidate_ref_starts = [candidate_ref_starts[i] for i in idx]
@@ -864,7 +893,7 @@ def update_cigar(
     else:
         return [target_event] + new_cigar + trailing_clip
 
-    return updated_cigar
+    #return updated_cigar
 
 
 def numeric_span(spl_span):

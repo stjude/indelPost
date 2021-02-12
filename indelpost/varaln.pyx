@@ -18,7 +18,7 @@ from .softclip import find_by_softclip_split
 from .localn import find_by_smith_waterman_realn, make_aligner
 
 from .alleles import phase_nearby_variants
-
+from .contig import compare_contigs
 from .utilities import get_local_reference, relative_aln_pos, split_cigar
 
 from indelpost.pileup cimport make_pileup
@@ -304,51 +304,57 @@ cdef class VariantAlignment:
         # soft-clip realn & SW realn
         if contig.qc_passed:
             
+            orig_contig = contig
+
             # realign reads that are not through retarget path
             if not retargeted:
-                cutoff = 1.0
-                within = 30 
-                
-                target = [read for read in pileup if read["is_target"]]
-                nontarget = [read for read in pileup if not read["is_target"]]
-                
-                grid = generate_grid(self.auto_adjust_extension_penalty, 
-                                     self.gap_open_penalty,
-                                     self.gap_extension_penalty,
-                                     self.__target,
-                       )
-                
-                res = grid_search(
-                        self.__target,
-                        nontarget,
-                        self.window,
-                        self.mapqthresh,
-                        within,
-                        cutoff,
-                        self.match_score,
-                        self.mismatch_penalty,
-                        grid,
-                    )
-                
-                if res:
-                    nontarget = [read for read in nontarget if read not in res[1]]
-                    pileup = target + res[1] + nontarget
-                    self.gap_open_penalty, self.gap_extension_penalty = res[2], res[3]
-                     
-                    self.__target, pileup = update_pileup(
-                        pileup,
-                        self.__target,
-                        self.window,
-                        self.match_score,
-                        self.mismatch_penalty,
-                        self.gap_open_penalty,
-                        self.gap_extension_penalty,
-                        self.basequalthresh,
-                        bypass_search=True,
-                    )
+               cutoff = 1.0
+               within = 30 
+               
+               target = [read for read in pileup if read["is_target"]]
+               nontarget = [read for read in pileup if not read["is_target"]]
+              
+               grid = generate_grid(self.auto_adjust_extension_penalty, 
+                                    self.gap_open_penalty,
+                                    self.gap_extension_penalty,
+                                    self.__target,
+                      )
+               
+               res = grid_search(
+                       self.__target,
+                       nontarget,
+                       self.window,
+                       self.mapqthresh,
+                       within,
+                       cutoff,
+                       self.match_score,
+                       self.mismatch_penalty,
+                       grid,
+                   )
+               
+               if res:
+                   nontarget = [read for read in nontarget if read not in res[1]]
+                   pileup = target + res[1] + nontarget
+                   self.gap_open_penalty, self.gap_extension_penalty = res[2], res[3]
+                    
+                   self.__target, pileup = update_pileup(
+                       pileup,
+                       self.__target,
+                       self.window,
+                       self.match_score,
+                       self.mismatch_penalty,
+                       self.gap_open_penalty,
+                       self.gap_extension_penalty,
+                       self.basequalthresh,
+                       bypass_search=True,
+                   )
+                   
+                   #equivalent but different position
+                   if self.__target == res[0]:
+                       self.__target = res[0]
 
-                else:
-                    pileup = target + nontarget    
+               else:
+                  pileup = target + nontarget    
                     
             pileup = find_by_softclip_split(self.__target, contig, pileup)
             
@@ -378,6 +384,8 @@ cdef class VariantAlignment:
                 self.basequalthresh,
                 self.mapqthresh,
             )
+
+            contig = compare_contigs(orig_contig, contig, self.__target.pos)
         
         return pileup, contig
     
@@ -530,13 +538,25 @@ cdef class VariantAlignment:
 
     def phase(
         self,
-        snv_neighborhood=20,
-        indel_neighborhood=15,
-        indel_repeat_thresh=10,
-        mutation_density_thresh=0.05,
-        sequence_complexity_thresh=0.0,
         how="local",
+        local_threshold=20,
+        longest_common_substring_threshold=15,
+        indel_repeat_threshold=10,
+        mutation_density_threshold=0.05,
     ):
+        """returns a :class:`~indelpost.Variant` object represeting a phased target indel. 
+        :class:`~indelpost.NullVariant` is returned if no target is found.
+        Phasing is limited to the exon where the target indel is located for RNA-Seq. 
+        Refer to :meth:`~indelpost.Contig.get_phasables()` to retrieve phasable variants across exons.
+        
+        Parameters
+        ----------
+        how : bool
+        local_threshold : integer
+        longest_common_substring_threshold : integer
+        indel_repeat_threshold : integer
+        mutation_density_threshold : float
+        """
         if how == "complex":
             hard, to_complex = False, True
         elif how == "greedy":
@@ -550,13 +570,11 @@ cdef class VariantAlignment:
             self.__target,
             self.contig,
             self.__pileup,
-            self.mapqthresh,
             self.basequalthresh,
-            snv_neighborhood,
-            indel_neighborhood,
-            indel_repeat_thresh,
-            mutation_density_thresh,
-            sequence_complexity_thresh,
+            local_threshold,
+            longest_common_substring_threshold,
+            indel_repeat_threshold,
+            mutation_density_threshold,
             hard,
             to_complex
         )
@@ -618,7 +636,6 @@ cdef list preprocess_for_contig_construction(
 
     targetpileup = [read for read in pileup if read["is_target"] and not read["is_dirty"]]
     
-    
     if not targetpileup:
         return targetpileup
     
@@ -677,8 +694,8 @@ cdef list preprocess_for_contig_construction(
             read for read in targetpileup if read.get("cigar_updated", False) 
         ]
         
-        #if len(_targetpileup) > 2:
-        #    _targetpileup = _targetpileup[: min(20, int(len(_targetpileup) / 1.5 ))]
+        if len(_targetpileup) > 2:
+            _targetpileup = _targetpileup[: min(20, int(len(_targetpileup) / 1.5 ))]
         
         if _targetpileup:    
             targetpileup = _targetpileup

@@ -4,17 +4,18 @@ import numpy as np
 import traceback
 from collections import OrderedDict
 
-from .utilities import most_common, get_gap_ptrn, most_common_gap_pattern, to_flat_list, merge_consecutive_gaps
+#from .utilities import most_common, get_gap_ptrn, most_common_gap_pattern, to_flat_list, merge_consecutive_gaps
+from .utilities import most_common, get_gap_ptrn2, most_common_gap_ptrn, to_flat_list, merge_consecutive_gaps
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 def make_consensus(target, targetpileup, basequalthresh):
      
-    expected_ptrn = most_common_gap_pattern(targetpileup)
+    expected_ptrn = most_common_gap_ptrn(targetpileup)
     
-    targetpileup = [read for read in targetpileup if expected_ptrn == get_gap_ptrn(read)]
-
+    targetpileup = [read for read in targetpileup if expected_ptrn == get_gap_ptrn2(read)]
+    
     target_pos, target_type, target_len = (
         target.pos,
         target.variant_type,
