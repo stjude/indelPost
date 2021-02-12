@@ -98,7 +98,7 @@ cdef class VariantAlignment:
         int downsample_threshold=3000,
         int base_quality_threshold=20,
         int match_score=2,
-        int mismatch_penalty=2,
+        int mismatch_penalty=3,
         int gap_open_penalty=3,
         int gap_extension_penalty=1,
         bint auto_adjust_extension_penalty=True,
