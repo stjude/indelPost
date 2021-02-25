@@ -175,6 +175,10 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     
     insertions, deletions = locate_indels(cigar_string, read_start)
     
+    #TODO
+    # check if leftaln should be applied.
+    # check if native DelIns (del-first) pattern
+    
     for ins in insertions:
         read_dict["I"].append(
             leftalign_indel_read(
@@ -327,7 +331,7 @@ cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
     pos = target.pos
 
     lt_cigar_lst, rt_cigar_lst = split_cigar(cigarstring, pos, read_start)
-
+    
     if len(rt_cigar_lst) < 3:
         return cigarstring
 
@@ -616,7 +620,7 @@ def retarget(
                     else:
                         alt = indel["lt_ref"][-1]
                         ref = alt + indel["del_seq"]
-               
+                
                 candidates.append(
                     Variant(target.chrom, indel["pos"], ref, alt, target.reference)
                 )

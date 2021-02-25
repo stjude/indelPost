@@ -220,6 +220,9 @@ cdef class Contig:
             return conseq
 
 def compare_contigs(orig_contig, new_contig, target_pos):
+    if new_contig.failed:
+        return orig_contig
+    
     orig_len = len(orig_contig.get_reference_seq())
     orig_clip_rate = orig_contig.qc_stats["clip_rate"]
     

@@ -72,7 +72,7 @@ cdef class VariantAlignment:
         `Ratcliff/Obershelp similarity score <https://docs.python.org/3/library/difflib.html#difflib.get_close_matches>`__ > cutoff (default 0.7).
    
     match_score : integer
-        score (default 2) for matched bases in Smith-Waterman local alignment.
+        score (default 3) for matched bases in Smith-Waterman local alignment.
 
     mismatch_penaly : interger
         penalty (default 2) for mismatched bases in Smith-Waterman local alignment.
@@ -95,10 +95,10 @@ cdef class VariantAlignment:
         int retarget_search_window=30,
         float retarget_similarity_cutoff=0.7,
         int mapping_quality_threshold=1,
-        int downsample_threshold=3000,
+        int downsample_threshold=1000,
         int base_quality_threshold=20,
-        int match_score=2,
-        int mismatch_penalty=3,
+        int match_score=3,
+        int mismatch_penalty=2,
         int gap_open_penalty=3,
         int gap_extension_penalty=1,
         bint auto_adjust_extension_penalty=True,
@@ -305,7 +305,7 @@ cdef class VariantAlignment:
         if contig.qc_passed:
             
             orig_contig = contig
-
+            
             # realign reads that are not through retarget path
             if not retargeted:
                cutoff = 1.0

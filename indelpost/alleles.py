@@ -83,11 +83,13 @@ def phase_nearby_variants(
     mismatches_to_phase = [var for var in variants_to_phase if not var.is_indel and indexed_contig.get(var.pos, False)]
     non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel and indexed_contig.get(var.pos, False)]
     
+
     if variants_to_phase:
         if not non_target_indels_to_phase:
             peak_locs = locate_mismatch_cluster_peaks(
                 indexed_contig, mismatches_to_phase, target, snv_neighborhood, to_complex
             )
+            
             if peak_locs:
                 remove_deletables(
                     indexed_contig, peak_locs[0], target.pos, peak_locs[1]
@@ -247,13 +249,15 @@ def locate_mismatch_cluster_peaks(
     lt_peak_pos = target.pos if lt_peak_pos == -np.inf else lt_peak_pos
     rt_peak_pos = target.pos + len(target.ref) - 1 if rt_peak_pos == np.inf else rt_peak_pos
 
-    if to_complex:
-        if is_tight_cluster(mismatches_to_phase, target, snv_neighborhood):
-            return (lt_peak_pos - 1, rt_peak_pos + 1)
-        else:
-            return None
-    else:
-        return (lt_peak_pos - 1, rt_peak_pos + 1)
+    #if to_complex:
+    #    if is_tight_cluster(mismatches_to_phase, target, snv_neighborhood):
+    #        return (lt_peak_pos - 1, rt_peak_pos + 1)
+    #    else:
+    #        return None
+    #else:
+    #    return (lt_peak_pos - 1, rt_peak_pos + 1)
+    
+    return (lt_peak_pos - 1, rt_peak_pos + 1)
 
 
 def calc_peak(indexed_contig, mismatches, target, snv_neighborhood, left):
@@ -270,7 +274,7 @@ def calc_peak(indexed_contig, mismatches, target, snv_neighborhood, left):
     score, gain = 0.0, 1.0
     peak_locus = -np.inf if left else np.inf
 
-    if not snv_loci:
+    if not snv_loci or not loci:
         return score, peak_locus
 
     indel_len = len(target.indel_seq)

@@ -85,6 +85,7 @@ def classify_softclip_patterns(read, pos):
     # event_pos = read["read_start"]  # 1-based genomic pos
     event_pos = read["covering_subread"][0]  # 1-based genomic pos
 
+    last_event = "O"
     for i, c in enumerate(read["cigar_list"]):
         event, event_len = c[-1], int(c[:-1])
         event_pos += event_len

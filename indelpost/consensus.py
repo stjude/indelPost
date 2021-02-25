@@ -117,8 +117,8 @@ def index_bases(
                 )
                 current_pos += target_len + 1
         elif len(first_cigar) == 2:
-            ins_first = "I" in first_cigar[0]
-
+            #ins_first = "I" in first_cigar[0]
+            
             del_len = sum(int(c[:-1]) for c in first_cigar if c[-1] == "D")
             ins_len = sum(int(c[:-1]) for c in first_cigar if c[-1] == "I")
 
