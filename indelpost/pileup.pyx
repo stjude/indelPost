@@ -68,6 +68,7 @@ cdef tuple make_pileup(
     # downsampling
     orig_depth = len(pileup)
     if orig_depth > downsamplethresh:
+        random.seed(123)
         pileup = random.sample(pileup, downsamplethresh)
         sample_factor = orig_depth / len(pileup)
     else:

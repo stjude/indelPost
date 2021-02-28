@@ -9,7 +9,8 @@ from pysam.libcbcf cimport VariantFile
 
 cdef class NullVariant:
     """This class is returned when :class:`~indelpost.VariantAlignment` cannot find the 
-    target indel in the BAM file. Boolean expression evaluates to False. Alleles are always "NNN".
+    target indel in the BAM file. Boolean expression evaluates to False. Ref and Alt alleles are the 
+    reference base at the locus.
     
     Parameters
     ----------
@@ -26,12 +27,25 @@ cdef class NullVariant:
     def __cinit__(self, str chrom, int pos, FastaFile reference):
         self.chrom = chrom
         self.pos = pos
-        self.ref = "NNN"
-        self.alt = "NNN"
+        self.ref = reference.fetch(chrom, pos - 1, pos)
+        self.alt = self.ref
         self.reference = reference
 
     def __bool__(self):
         return False
+    
+
+    def __eq__(self, other):
+        chrom_equal = (self.chrom == other.chrom)
+        pos_equal = (self.pos == other.pos)
+        ref_equal = (self.ref == other.ref)
+        alt_equal = (self.alt == other.alt)
+        return all([chrom_equal, pos_equal, ref_equal, alt_equal])
+
+
+    def __hash__(self):
+        hashable = (self.chrom, self.pos, self.ref, self.alt)
+        return hash(hashable)
 
 
 cdef class Variant:
@@ -118,8 +132,7 @@ cdef class Variant:
                 raise ValueError("The locus is not defined in the reference")
         except:
             raise ValueError("The locus is not defined in the reference")
-
-
+    
     @property
     def variant_type(self):
         """ returns "I" if the net allele-length change is gain, "D" if loss, 
@@ -135,7 +148,7 @@ cdef class Variant:
             var_type = "I"
         elif r_len > a_len:
             var_type = "D"
-        elif r_len == a_len == 1:
+        elif a_len == 1:
             var_type = "S"
         else:
             var_type = "M"

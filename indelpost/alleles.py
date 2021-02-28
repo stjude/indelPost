@@ -78,8 +78,10 @@ def phase_nearby_variants(
     lt_end = max(lt_loci) if lt_loci else -np.inf
     rt_end = min(rt_loci) if rt_loci else np.inf
     
+    
     remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
     
+    #print("here", indexed_contig)
     mismatches_to_phase = [var for var in variants_to_phase if not var.is_indel and indexed_contig.get(var.pos, False)]
     non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel and indexed_contig.get(var.pos, False)]
     

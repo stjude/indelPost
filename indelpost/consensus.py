@@ -23,7 +23,6 @@ def make_consensus(target, targetpileup, basequalthresh):
     )
     
     lt_indexed, rt_indexed = [], []
-    
     for read in targetpileup:
         target_pos = target_pos if read.get("target_right_shifted", 0) else target_pos
         

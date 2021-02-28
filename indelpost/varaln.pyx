@@ -195,6 +195,7 @@ cdef class VariantAlignment:
                     self.mismatch_penalty,
                     self.gap_open_penalty,
                     exptension_penalty_used,
+                    this_run=True
                 ),
                 self.basequalthresh,
                 self.mapqthresh,
@@ -289,6 +290,7 @@ cdef class VariantAlignment:
                             self.mismatch_penalty,
                             self.gap_open_penalty,
                             self.gap_extension_penalty,
+                            this_run=False,
                         ),
                         self.basequalthresh,
                         self.mapqthresh
@@ -300,7 +302,7 @@ cdef class VariantAlignment:
                 # no target in this pileup
                 else:
                     return pileup, contig
-
+        
         # soft-clip realn & SW realn
         if contig.qc_passed:
             
@@ -332,8 +334,10 @@ cdef class VariantAlignment:
                        grid,
                    )
                
+              
                if res:
                    nontarget = [read for read in nontarget if read not in res[1]]
+                   
                    pileup = target + res[1] + nontarget
                    self.gap_open_penalty, self.gap_extension_penalty = res[2], res[3]
                     
@@ -348,6 +352,7 @@ cdef class VariantAlignment:
                        self.basequalthresh,
                        bypass_search=True,
                    )
+                   
                    
                    #equivalent but different position
                    if self.__target == res[0]:
@@ -368,7 +373,7 @@ cdef class VariantAlignment:
                 self.gap_extension_penalty,
                 self.basequalthresh
             )
-
+            
             contig = Contig(
                 self.__target,
                 preprocess_for_contig_construction(
@@ -380,6 +385,7 @@ cdef class VariantAlignment:
                     self.mismatch_penalty,
                     self.gap_open_penalty,
                     self.gap_extension_penalty,
+                    this_run=True,
                 ),
                 self.basequalthresh,
                 self.mapqthresh,
@@ -626,6 +632,7 @@ cdef list preprocess_for_contig_construction(
     int mismatch_penalty,
     int gap_open_penalty,
     int gap_extension_penalty,
+    bint this_run
 ):
     
     cdef dict read
@@ -651,6 +658,7 @@ cdef list preprocess_for_contig_construction(
     nonclips = len(nonclipped_targetpileup)
     
     if target == orig_target and nonclips > 9:
+        random.seed(123)
         targetpileup = random.sample(nonclipped_targetpileup, 10)
         targetpileup = [right_aligner(read, target) for read in targetpileup]
     else:
@@ -689,7 +697,6 @@ cdef list preprocess_for_contig_construction(
         
         targetpileup = [read for read in targetpileup if read is not None and (read.get("lt_cigar", None) and read.get("rt_cigar", None))]
         
-         
         _targetpileup = [
             read for read in targetpileup if read.get("cigar_updated", False) 
         ]
@@ -701,7 +708,7 @@ cdef list preprocess_for_contig_construction(
             targetpileup = _targetpileup
         else:
             return targetpileup
-    
+        
     return targetpileup
 
 

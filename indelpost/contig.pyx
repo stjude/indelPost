@@ -22,7 +22,8 @@ cdef class Contig:
         self.pileup = pileup
 
         self.targetpileup = self.__preprocess(mapqthresh, donwsample_lim)
-
+        
+        #print([r["read_name"] for r in self.targetpileup])
         if self.targetpileup:
             consensus = make_consensus(self.target, self.targetpileup, basequalthresh)
             if consensus:
@@ -34,7 +35,7 @@ cdef class Contig:
         else:
             self.qc_passed = False
             self.failed = True
-
+        
 
     def __preprocess(self, mapqthresh, donwsample_lim):
         targetpileup = [read for read in self.pileup if read is not None and read["is_target"]]
@@ -57,7 +58,6 @@ cdef class Contig:
 
 
     def __make_contig(self, lt_consensus, rt_consensus, basequalthresh):
-         
         self.__index_by_genome_coord(lt_consensus[0], rt_consensus[0])
         
         self.lt_reference_seq = ""
