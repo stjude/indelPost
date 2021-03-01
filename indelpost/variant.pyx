@@ -34,14 +34,16 @@ cdef class NullVariant:
     def __bool__(self):
         return False
     
-
     def __eq__(self, other):
+        
+        if isinstance(other, Variant):
+            return False
+       
         chrom_equal = (self.chrom == other.chrom)
         pos_equal = (self.pos == other.pos)
         ref_equal = (self.ref == other.ref)
         alt_equal = (self.alt == other.alt)
         return all([chrom_equal, pos_equal, ref_equal, alt_equal])
-
 
     def __hash__(self):
         hashable = (self.chrom, self.pos, self.ref, self.alt)
@@ -190,8 +192,11 @@ cdef class Variant:
 
 
     def __eq__(self, other):
-        cdef Variant i, j
         
+        if isinstance(other, NullVariant):
+            return False
+        
+        cdef Variant i, j
         i, j = self.normalize(), other.normalize()
 
         equivalent = (
