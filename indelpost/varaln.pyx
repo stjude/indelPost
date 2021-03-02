@@ -352,8 +352,7 @@ cdef class VariantAlignment:
                        self.basequalthresh,
                        bypass_search=True,
                    )
-                   
-                   
+                          
                    #equivalent but different position
                    if self.__target == res[0]:
                        self.__target = res[0]

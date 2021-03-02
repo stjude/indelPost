@@ -260,10 +260,16 @@ cdef class Variant:
             i = self
         else:
             i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
-
+        
         condition_1 = i.ref[-1].upper() == i.alt[-1].upper()
         while condition_1:
-            left_base = i.reference.fetch(i._chrom, i.pos - 2, i.pos - 1)
+            
+            try:
+                left_base = i.reference.fetch(i._chrom, i.pos - 2, i.pos - 1)
+            except:
+                # when hit the left bound
+                condition_1 = False
+
             i.ref = left_base + i.ref[:-1]
             i.alt = left_base + i.alt[:-1]
             i.pos -= 1

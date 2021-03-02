@@ -43,7 +43,7 @@ def phase_nearby_variants(
     # no phasable variants
     variants_to_phase = contig.mismatches + contig.non_target_indels
     if not variants_to_phase:
-        return make_target_obj_from_contig(target, indexed_contig)
+        return  make_target_obj_from_contig(target, indexed_contig)
     
     # phase all phasables within the target exon (hard phasing)
     if hard:
@@ -54,7 +54,7 @@ def phase_nearby_variants(
         indexed_contig, variants_to_phase = precleaning(indexed_contig, variants_to_phase, target.pos, pileup)
     
     if not variants_to_phase:
-        return make_target_obj_from_contig(target, indexed_contig)
+        return  make_target_obj_from_contig(target, indexed_contig)
     else:
         variants_in_non_targets, mut_frac = variants_in_non_target_pileup(
             pileup, target, basequalthresh, to_complex
@@ -81,10 +81,8 @@ def phase_nearby_variants(
     
     remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
     
-    #print("here", indexed_contig)
     mismatches_to_phase = [var for var in variants_to_phase if not var.is_indel and indexed_contig.get(var.pos, False)]
     non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel and indexed_contig.get(var.pos, False)]
-    
 
     if variants_to_phase:
         if not non_target_indels_to_phase:
@@ -123,9 +121,11 @@ def phase_nearby_variants(
 
 
 def make_target_obj_from_contig(target, indexed_contig):
-    data = indexed_contig[target.pos]
-    return Variant(target.chrom, target.pos, data[0], data[1], target.reference).normalize()
-
+    try:
+        data = indexed_contig[target.pos]
+        return Variant(target.chrom, target.pos, data[0], data[1], target.reference).normalize()
+    except:
+        return target.normalize()
 
 def greedy_phasing(target, indexed_contig):
 
@@ -608,6 +608,9 @@ def end_point(indexed_contig, mismatches, target, snv_neighborhood, left):
     if not left:
         tmp = OrderedDict(reversed(list(tmp.items())))
     
+    if not end_most_indel:
+        end_most_indel = target 
+
     score, peak_pos = calc_peak(tmp, mismatches, end_most_indel, snv_neighborhood, left)
     if score <= 0:
         if left:
@@ -623,7 +626,6 @@ def end_point(indexed_contig, mismatches, target, snv_neighborhood, left):
 
     
 def get_end_most_indel(indexed_contig, target):
-    
     for k, v in indexed_contig.items():
         if len(v[0]) != len(v[1]):
             return Variant(target.chrom, k, v[0], v[1], target.reference)       

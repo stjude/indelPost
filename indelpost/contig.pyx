@@ -23,7 +23,6 @@ cdef class Contig:
 
         self.targetpileup = self.__preprocess(mapqthresh, donwsample_lim)
         
-        #print([r["read_name"] for r in self.targetpileup])
         if self.targetpileup:
             consensus = make_consensus(self.target, self.targetpileup, basequalthresh)
             if consensus:
@@ -123,7 +122,16 @@ cdef class Contig:
     def __index_by_genome_coord(self, lt_index, rt_index):
         self.lt_genomic_index = lt_index
         self.rt_genomic_index = rt_index
-
+        
+        # the target may be of low quality ("N")
+        if "N" in rt_index[self.target.pos][1]:
+            rt_index[self.target.pos] = (
+                                            rt_index[self.target.pos][0], 
+                                            self.target.alt, 
+                                            rt_index[self.target.pos][2], 
+                                            rt_index[self.target.pos][3]
+            )
+        
         genome_indexed_contig = lt_index
         genome_indexed_contig.update(rt_index)
         self.contig_dict = OrderedDict(sorted(genome_indexed_contig.items()))

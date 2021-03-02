@@ -26,32 +26,34 @@ def find_by_normalization(
     """
     pileup = [is_target_by_normalization(read, target) for read in pileup]
     
-    target, extension_penalty_used = seek_larger_gapped_aln(
-        target,
-        pileup,
-        window,
-        match_score,
-        mismatch_penalty,
-        gap_open_penalty,
-        gap_extension_penalty,
-        basequalthresh,
-        is_first_pass,
-    )
+    return target, pileup, gap_extension_penalty
 
-    if is_first_pass and extension_penalty_used == 255:
-        return find_by_normalization(
-            target,
-            pileup,
-            window,
-            match_score,
-            mismatch_penalty,
-            gap_open_penalty,
-            gap_extension_penalty,
-            basequalthresh=24,
-            is_first_pass=False,
-        )
-    else:
-        return target, pileup, extension_penalty_used
+    ##target, extension_penalty_used = seek_larger_gapped_aln(
+    #    target,
+    #    pileup,
+    #    window,
+    #    match_score,
+    #    mismatch_penalty,
+    #    gap_open_penalty,
+    #    gap_extension_penalty,
+    #    basequalthresh,
+    #    is_first_pass,
+    #)
+
+    #if is_first_pass and extension_penalty_used == 255:
+    #    return find_by_normalization(
+    #        target,
+    #        pileup,
+    #        window,
+    #        match_score,
+    #        mismatch_penalty,
+    #        gap_open_penalty,
+    #        gap_extension_penalty,
+    #        basequalthresh=24,
+    #        is_first_pass=False,
+    #    )
+    #else:
+    #    return target, pileup, extension_penalty_used
 
 
 def is_target_by_normalization(read, target):
