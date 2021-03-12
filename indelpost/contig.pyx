@@ -1,10 +1,9 @@
 # cython: embedsignature=True
 #cython: profile=True
 
-
 import random
 import numpy as np
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
 from .utilities import *
 
@@ -17,6 +16,8 @@ random.seed(123)
 
 
 cdef class Contig:
+    """This class represents a consensus contig assembled from a subset (not all) of reads supporting the target indel.
+    """
     def __cinit__(self, Variant target, list pileup, int basequalthresh, int mapqthresh, double low_consensus_thresh=0.7, int donwsample_lim=100):
         self.target = target
         self.pileup = pileup
@@ -188,9 +189,61 @@ cdef class Contig:
             return False
         else:
             return True
+   
+    
+    def _get_splice_patterns(self):
+        spls = self.splice_pattern
+        if spls:
+            intervals = []
+            i, last_idx = 0, len(spls) - 1
+            while i < last_idx:
+                start = spls[i][1] + 1
+                end = spls[i + 1][0] - 1
+                intervals.append((start, end)) 
+                i += 1
+
+            return intervals
 
     
+    def get_alignment(self):
+        """shows the contig alignment as `namedtuple <https://docs.python.org/3/library/collections.html#collections.namedtuple>`__. 
+        ContigAlignment.chrom returns chromosome. ContigAlignment.aln returns an alignment dictionary as 
+        `OrderedDict <https://docs.python.org/3/library/collections.html#collections.OrderedDict>`__. 
+        The dictionary key is the position and the value is a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ as (REF, ALT). 
+        ContigAlignment.spliced_intervals returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ 
+        of spliced intervals involved in the contig. `None <https://docs.python.org/3/c-api/none.html>`__ for unspliced contig such as DNA-Seq.  
+        """
+        ContigAlignment = namedtuple("ContigAlignment", "chrom aln spliced_intervals")
+        
+        data = []
+        for k, v in self.contig_dict.items():
+            if v[1] and v[0]:
+                data.append((k, (v[0], v[1])))
+
+        caln = ContigAlignment(chrom=self.target.chrom, aln=data, spliced_intervals=self._get_splice_patterns())
+        return caln
+
+
+    def get_phasables(self):
+        """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__  of :class:`~indelpost.Variant` objects phasable with the target indel.
+        """
+        phasables = []
+        chrom = self.target.chrom
+        reference = self.target.reference
+        for k, v in self.contig_dict.items():
+            if v[1] and v[0] and v[1] != v[0]:
+                phasables.append(Variant(chrom, k, v[0], v[1], reference))
+        return phasables 
+        
+    
     def get_reference_seq(self, split=False):
+        """returns the reference contig sequence.
+        
+        Parameters
+        ----------
+            split : bool
+                splits the reference at the target indel position.              
+        """
         if self.failed:
             return None
         
@@ -210,6 +263,13 @@ cdef class Contig:
 
 
     def get_contig_seq(self, split=False):
+        """returns the contig sequence.
+        
+        Parameters
+        ----------
+            split : bool
+                splits the contig sequence at the target indel position.
+        """
         if self.failed:
             return None
         
@@ -226,6 +286,7 @@ cdef class Contig:
             )
 
             return conseq
+
 
 def compare_contigs(orig_contig, new_contig, target_pos):
     if new_contig.failed:
@@ -251,6 +312,7 @@ def compare_contigs(orig_contig, new_contig, target_pos):
         return orig_contig
     else:
         return new_contig
+
    
 def contig_centerness_score(contig, target_pos):
     lt_cnt, rt_cnt = 0, 0

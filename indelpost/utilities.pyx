@@ -520,7 +520,7 @@ cpdef tuple get_local_reference(
     ref_len = reference.get_reference_length(chrom)
     
     cdef list spl_ptrn = []
-
+    
     if splice_patterns:
         lt_patterns = [ptrn[0] for ptrn in splice_patterns if ptrn[0]]
         if lt_patterns:
@@ -546,13 +546,15 @@ cpdef tuple get_local_reference(
         left_len = 0
         first_pass = False
         local_reference = ""
-        
         for i, x in enumerate(spl_pos):
             if i == 0:
                 lt_end = max(0, x - window * 2)
                 local_reference += reference.fetch(chrom, lt_end, x - 1)
                 rt_end = x - 1
-                spl_ptrn.append((x + 1, rt_end))
+                if x + 1 < rt_end:
+                    spl_ptrn.append((x + 1, rt_end))
+                else:
+                    spl_ptrn.append((lt_end, rt_end))
             elif i % 2 == 1 and i != last_idx:
                 local_reference += reference.fetch(chrom, x, spl_pos[i+1] - 1)
                 rt_end = spl_pos[i+1] - 1

@@ -217,12 +217,12 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     indels = [ins[-1] for ins in read_dict["I"]] + [deln[-1] for deln in read_dict["D"]]
 
     # update cigar to left-aligned cigar
-    if indels:
-        for indel in indels:
-            cigar_string = leftalign_cigar(cigar_string, indel, read_start)
-
-        read_dict["cigar_string"] = cigar_string
-        read_dict["cigar_list"] = cigar_ptrn.findall(read_dict["cigar_string"])
+    #if indels:
+    #    for indel in indels:
+    #        cigar_string = leftalign_cigar(cigar_string, indel, read_start)
+#
+ #       read_dict["cigar_string"] = cigar_string
+ #       read_dict["cigar_list"] = cigar_ptrn.findall(read_dict["cigar_string"])
 
     # check if the read covers the locus of interest
     (
@@ -305,25 +305,28 @@ cdef tuple leftalign_indel_read(
         indel_seq = rt_ref[:indel_len]
         rt_ref = rt_ref[indel_len:]
         var = Variant(chrom, pos, padding_base + indel_seq, padding_base, reference)
-
-    if var.is_leftaligned:
-        return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
-    else:
-        pos = var.normalize().pos
-        cigar_string = leftalign_cigar(cigar_string, var, read_start)
-        return leftalign_indel_read(
-            chrom,
-            pos,
-            indel_len,
-            indel_type,
-            cigar_string,
-            read_start,
-            aln_start,
-            read_seq,
-            ref_seq,
-            read_qual,
-            reference,
-        )
+    
+    return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
+    
+    #unreach
+    #if var.is_leftaligned:
+    #    return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
+    #else:
+    #    pos = var.normalize().pos
+    #    cigar_string = leftalign_cigar(cigar_string, var, read_start)
+    #    return leftalign_indel_read(
+    #        chrom,
+    #        pos,
+    #        indel_len,
+    #        indel_type,
+    #        cigar_string,
+    #        read_start,
+    #        aln_start,
+    #        read_seq,
+    #        ref_seq,
+    #        read_qual,
+    #        reference,
+    #    )
 
 
 cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
@@ -853,7 +856,7 @@ def update_cigar(
                                 if m1:
                                     new_cigar += [str(m1) + "M", str(n) + "N", str(m2) + "M"]
                                 else:
-                                     new_cigar += [str(n) + "N", str(m2) + "M"]
+                                    new_cigar += [str(n) + "N", str(m2) + "M"]
                             else:
                                 new_cigar += [str(event_len) + "M", str(n) + "N"]
                                      
@@ -861,7 +864,8 @@ def update_cigar(
                         spl_spans = spl_spans[1:]
                     else:
                         new_cigar.append(str(event_len) + "M") 
-                        current_pos += event_len
+                        current_pos += event_len - 1
+                        # hotfix -1 should be checked! Mar 12
                         break
 
             else:

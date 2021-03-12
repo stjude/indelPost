@@ -524,7 +524,7 @@ cdef class Variant:
         return True
 
 
-    def decompose_complex_variant(self, match_score=2, mismatch_penalty=2, gap_open_penalty=4, gap_extension_penalty=0):
+    def decompose_complex_variant(self, match_score=3, mismatch_penalty=2, gap_open_penalty=4, gap_extension_penalty=0):
         """returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ of 
         non-complex :class:`~indelpost.Variant` objects decomposed by the Smith-Waterman local alignment 
         with a given set of score/penalty.
@@ -532,7 +532,7 @@ cdef class Variant:
         Parameters
         ----------
         match_score : integer
-            default to 2.
+            default to 3.
         mismatch_penalty : integer
             default to 2.
         gap_open_penalty : integer

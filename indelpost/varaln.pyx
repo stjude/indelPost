@@ -460,13 +460,13 @@ cdef class VariantAlignment:
         self, fwrv=False, by_fragment=False, quality_window=None, quality_threshold=None
     ):
         """returns a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ of
-        read counts:  (#reads w/o target indel, #reads w/ target indel).
+        read counts:  (#ref reads, #alt reads).
 
         Parameters
         ----------
             fwrv : bool
                 breaks down into the forward and reverse read counts.
-                ( (fw w/o, rv w/o), (fw w/, rv w/) ).
+                ( (ref-fw, ref-rv), (alt-fw, alt-rv) ).
             by_fragment : bool
                 counts by fragment. Overlapping fw and rv reads are counted as one.
             quality_window : integer
@@ -556,11 +556,21 @@ cdef class VariantAlignment:
         
         Parameters
         ----------
-        how : bool
+        how : string
+            - "local" (default) phasing by recursive elimination of longest common substrings (LCS) and locality  scoring (see local_threshold).
+            - "greedy" phase all phasable events.
+            - "complex" phasing by the "local" option + exclusivity check. The exclusivity check removes phasable events that are also observed in non-target reads such as nearby homozygous germline events.
         local_threshold : integer
+            local (and complex) phasing method checks if phasable SNVs are locally clustered around the indel. 
+            For i-th base apart from indel, the score gains one if mismatch and, if match, loses 
+            1*min(j/local_thresh, 1) where j = i for short indels (< 10-nt) and 0.6*i for longer indels.      
         longest_common_substring_threshold : integer
+            removes common substrings between the reference and contig assembled from target reads that are longer than longest_common_substring_threshold (default 15). 
         indel_repeat_threshold : integer
+            do not phase indels that repeat more than indel_repeat_threshold (default 10)
         mutation_density_threshold : float
+            do not phase if the pileup contains too many mutations (possibly error-prone dirty region). 
+            In non-target reads, #non-ref bases/#all bases > mutation_density_threshold (default 0.05)
         """
         if how == "complex":
             hard, to_complex = False, True
