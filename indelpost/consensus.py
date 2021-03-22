@@ -22,7 +22,7 @@ def make_consensus(target, targetpileup, basequalthresh):
         len(target.indel_seq),
     )
     
-    lt_indexed, rt_indexed = [], []
+    lt_indexed, rt_indexed, contributing_reads = [], [], []
     for read in targetpileup:
         target_pos = target_pos if read.get("target_right_shifted", 0) else target_pos
         
@@ -57,6 +57,7 @@ def make_consensus(target, targetpileup, basequalthresh):
                  )
             lt_indexed.append(lt)
             rt_indexed.append(rt)
+            contributing_reads.append(read)
         
         except:
             #this is for debugging
@@ -68,7 +69,7 @@ def make_consensus(target, targetpileup, basequalthresh):
         lt_consensus = consensus_data(lt_indexed, True, basequalthresh)
         rt_consensus = consensus_data(rt_indexed, False, basequalthresh)
         
-        return lt_consensus, rt_consensus
+        return lt_consensus, rt_consensus, contributing_reads
 
 
 def index_bases(

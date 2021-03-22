@@ -27,7 +27,10 @@ cdef class Contig:
         if self.targetpileup:
             consensus = make_consensus(self.target, self.targetpileup, basequalthresh)
             if consensus:
+                self.splice_pattern = get_local_reference(self.target, consensus[2], window=50, unspliced=False, splice_pattern_only=True)
+                
                 self.__make_contig(consensus[0], consensus[1], basequalthresh)
+               
                 self.failed = False
             else:
                 self.qc_passed = False
@@ -41,7 +44,7 @@ cdef class Contig:
         targetpileup = [read for read in self.pileup if read is not None and read["is_target"]]
         self.mapq = 0
 
-        self.splice_pattern = get_local_reference(self.target, targetpileup, window=50, unspliced=False, splice_pattern_only=True)
+        #self.splice_pattern = get_local_reference(self.target, targetpileup, window=50, unspliced=False, splice_pattern_only=True)
         
         self.is_target_right_aligned = sum(read.get("target_right_aligned", 0) for read in targetpileup)
         
