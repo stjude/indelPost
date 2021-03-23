@@ -1,6 +1,11 @@
 # cython: embedsignature=True
 from indelpost.variant cimport Variant
 
+cdef class FailedContig:
+    cdef public bint target_not_found
+    cdef public bint is_low_quality
+    cdef public bint failed_to_construct
+
 cdef class Contig:
     cdef Variant target
     cdef list pileup, targetpileup

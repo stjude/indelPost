@@ -23,7 +23,7 @@ from .utilities import get_local_reference, relative_aln_pos, split_cigar
 
 from indelpost.pileup cimport make_pileup
 from indelpost.utilities cimport split
-from indelpost.contig cimport Contig 
+from indelpost.contig cimport Contig, FailedContig 
 
 from indelpost.variant cimport Variant, NullVariant
 
@@ -195,7 +195,6 @@ cdef class VariantAlignment:
                     self.mismatch_penalty,
                     self.gap_open_penalty,
                     exptension_penalty_used,
-                    this_run=True
                 ),
                 self.basequalthresh,
                 self.mapqthresh,
@@ -290,7 +289,6 @@ cdef class VariantAlignment:
                             self.mismatch_penalty,
                             self.gap_open_penalty,
                             self.gap_extension_penalty,
-                            this_run=False,
                         ),
                         self.basequalthresh,
                         self.mapqthresh
@@ -384,7 +382,6 @@ cdef class VariantAlignment:
                     self.mismatch_penalty,
                     self.gap_open_penalty,
                     self.gap_extension_penalty,
-                    this_run=True,
                 ),
                 self.basequalthresh,
                 self.mapqthresh,
@@ -416,9 +413,25 @@ cdef class VariantAlignment:
 
     def get_contig(self):
         """returns :class:`~indelpost.Contig` object built from reads supporting the target indel.
-        None is returned if no target is found.
+        "class:`~indelpost.FailedContig` is returned if contig assembly is not successful.
         """
-        return self.contig
+        contig = self.contig
+        if contig and not contig.failed:
+            return contig
+        else:
+            failed = FailedContig()
+            alt_cnt = self.count_alleles()[1]
+            if alt_cnt:
+          
+                dirty_target_pileup = [read["is_dirty"] for read in self.__pileup if read["is_target"]]
+                if sum(dirty_target_pileup) == len(dirty_target_pileup):
+                    failed.is_low_quality = True  
+                else:
+                    failed.failed_to_construct = True
+            else:
+                failed.target_not_found = True
+
+            return failed
          
     
     def get_target_indel(self):
@@ -426,10 +439,11 @@ cdef class VariantAlignment:
         The target indel may be different from the input indel due to the internal realignment. 
         :class:`~indelpost.NullVariant` is returned when no target is found.
         """
-        if self.contig.failed:
-            return NullVariant(self.__target.chrom, self.__target.pos, self.__target.reference)
-        else:
+        alt_cnt = self.count_alleles()[1]
+        if alt_cnt:
             return self.__target
+        else:
+            return NullVariant(self.__target.chrom, self.__target.pos, self.__target.reference)
 
     
     def fetch_reads(self, how='target'):
@@ -641,7 +655,6 @@ cdef list preprocess_for_contig_construction(
     int mismatch_penalty,
     int gap_open_penalty,
     int gap_extension_penalty,
-    bint this_run
 ):
     
     cdef dict read

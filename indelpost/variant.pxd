@@ -4,10 +4,10 @@ from pysam.libcfaidx cimport FastaFile
 from pysam.libcbcf cimport VariantRecord, VariantFile
 
 cdef class NullVariant:
-    cdef public str chrom
+    cdef readonly str chrom
     cdef readonly str ref, alt
-    cdef public int pos
-    cdef public FastaFile reference
+    cdef readonly int pos
+    cdef readonly FastaFile reference
 
 
 cdef class Variant:

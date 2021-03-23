@@ -214,7 +214,7 @@ cdef class Contig:
         `OrderedDict <https://docs.python.org/3/library/collections.html#collections.OrderedDict>`__. 
         The dictionary key is the position and the value is a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ as (REF, ALT). 
         ContigAlignment.spliced_intervals returns a `list <https://docs.python.org/3/library/stdtypes.html#list>`__ 
-        of spliced intervals involved in the contig. `None <https://docs.python.org/3/c-api/none.html>`__ for unspliced contig such as DNA-Seq.  
+        of spliced intervals involved in the contig. `None <https://docs.python.org/3/c-api/none.html>`__ if the region of interest is not spliced.  
         """
         ContigAlignment = namedtuple("ContigAlignment", "chrom aln spliced_intervals")
         
@@ -289,6 +289,16 @@ cdef class Contig:
             )
 
             return conseq
+
+
+cdef class FailedContig: 
+    def __cinit__(self):
+        self.target_not_found = False
+        self.is_low_quality = False
+        self.failed_to_construct = False
+         
+    def __bool__(self):
+        return False
 
 
 def compare_contigs(orig_contig, new_contig, target_pos):
