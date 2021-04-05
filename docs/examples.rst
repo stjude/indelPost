@@ -24,7 +24,7 @@ To query the COSMIC VCF database for these indels::
     reference = pysam.FastaFile("/path/to/GRCh38.fa")
     cosmic = pysam.VariantFile("/path/to/cosmic.v89.vcf(.gz)")
 
-    #Suppose your input is del2 (the last row)
+    #suppose your input is del2
     v = Variant("17", 31224665, "CC", "C", reference)
     
     #query by normalization (default)
@@ -42,4 +42,10 @@ To query the COSMIC VCF database for these indels::
     #exact match (no normalization)
     exact_hit = v.query(cosmic, matchby="exact")
     
-    print(exact_hit[0]["INFO"]["CNT"]) #COSMIC count for del2 only 
+    print(exact_hit[0]["INFO"]["CNT"]) #COSMIC count for del2 only
+    
+    
+    
+Decomposing complex indel
+-------------------------
+ 
