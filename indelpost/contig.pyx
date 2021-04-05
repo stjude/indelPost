@@ -224,6 +224,7 @@ cdef class Contig:
                 data.append((k, (v[0], v[1])))
 
         caln = ContigAlignment(chrom=self.target.chrom, aln=data, spliced_intervals=self._get_splice_patterns())
+        
         return caln
 
 
@@ -236,6 +237,7 @@ cdef class Contig:
         for k, v in self.contig_dict.items():
             if v[1] and v[0] and v[1] != v[0]:
                 phasables.append(Variant(chrom, k, v[0], v[1], reference))
+       
         return phasables 
         
     
@@ -291,11 +293,25 @@ cdef class Contig:
             return conseq
 
 
-cdef class FailedContig: 
+cdef class FailedContig:
+    """This class is returned when contig assembly has failed. Boolean expression evaluates to `False <https://docs.python.org/3/library/stdtypes.html#boolean-values>`__.
+    
+    Parameters
+    ----------
+    target_not_found : bool
+        True when contig was not constructed because the target indel was not found.
+    
+    is_low_quality : bool
+        True when contig was not constructed because the target indel was only suppported by low quality reads.
+        Reads are defined low quality if 15% or more bases have quality score < :attr:`~indelpost.VariantAlignment.base_quality_threshold`.
+        
+    failed_anyway : bool
+        True when contig was not constructed due to the other reasons.     
+    """  
     def __cinit__(self):
         self.target_not_found = False
         self.is_low_quality = False
-        self.failed_to_construct = False
+        self.failed_anyway = False
          
     def __bool__(self):
         return False

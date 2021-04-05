@@ -4,7 +4,7 @@ from indelpost.variant cimport Variant
 cdef class FailedContig:
     cdef public bint target_not_found
     cdef public bint is_low_quality
-    cdef public bint failed_to_construct
+    cdef public bint failed_anyway
 
 cdef class Contig:
     cdef Variant target

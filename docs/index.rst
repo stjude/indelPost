@@ -16,7 +16,7 @@ Contents
    :maxdepth: 2
    
    indelpost_api.rst
-
+   examples.rst
 
 
 Indices and tables

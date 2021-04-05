@@ -413,7 +413,7 @@ cdef class VariantAlignment:
 
     def get_contig(self):
         """returns :class:`~indelpost.Contig` object built from reads supporting the target indel.
-        "class:`~indelpost.FailedContig` is returned if contig assembly is not successful.
+        :class:`~indelpost.FailedContig` is returned if contig assembly is not successful.
         """
         contig = self.contig
         if contig and not contig.failed:
