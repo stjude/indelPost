@@ -64,13 +64,15 @@ cdef tuple make_pileup(
     ref_len = reference.get_reference_length(chrom)
     
     pileup = fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates)
-    
+     
+    orig_depth = bam.count(chrom, pos - 1, pos)
+    orig_read_num = len(pileup)
+      
     # downsampling
-    orig_depth = len(pileup)
     if orig_depth > downsamplethresh:
         random.seed(123)
-        pileup = random.sample(pileup, downsamplethresh)
-        sample_factor = orig_depth / len(pileup)
+        pileup = random.sample(pileup,  int(orig_read_num * (downsamplethresh / orig_depth)))
+        sample_factor = orig_read_num / len(pileup)
     else:
         sample_factor = 1.0
 
@@ -176,10 +178,6 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     
     insertions, deletions = locate_indels(cigar_string, read_start)
     
-    #TODO
-    # check if leftaln should be applied.
-    # check if native DelIns (del-first) pattern
-    
     for ins in insertions:
         read_dict["I"].append(
             leftalign_indel_read(
@@ -216,15 +214,6 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
 
     indels = [ins[-1] for ins in read_dict["I"]] + [deln[-1] for deln in read_dict["D"]]
 
-    # update cigar to left-aligned cigar
-    #if indels:
-    #    for indel in indels:
-    #        cigar_string = leftalign_cigar(cigar_string, indel, read_start)
-#
- #       read_dict["cigar_string"] = cigar_string
- #       read_dict["cigar_list"] = cigar_ptrn.findall(read_dict["cigar_string"])
-
-    # check if the read covers the locus of interest
     (
         is_covering,
         covering_subread,

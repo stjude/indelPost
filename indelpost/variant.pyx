@@ -24,12 +24,23 @@ cdef class NullVariant:
         reference FASTA file supplied as
         `pysam.FastaFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.FastaFile>`__ object.
     """
-    def __cinit__(self, str chrom, int pos, FastaFile reference):
+    def __init__(self, str chrom, int pos, FastaFile reference):
         self.chrom = chrom
         self.pos = pos
         self.ref = reference.fetch(chrom, pos - 1, pos)
         self.alt = self.ref
         self.reference = reference
+
+    def __getstate__(self):
+        return (self.chrom, self.pos, self.ref, self.alt)
+
+    def __setstate__(self, state):
+        self.chrom = state[0]
+        self.pos = state[1]
+        self.ref = state[2]
+        self.alt = state[3]
+
+        self.reference = self.reference
 
     def __bool__(self):
         return False
@@ -80,7 +91,7 @@ cdef class Variant:
         other than A/a, C/c, G/g, T/t, and N/n. 
         
     """
-    def __cinit__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
+    def __init__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
         self._chrom = chrom
         self.pos = pos
         self.ref = ref
@@ -91,6 +102,19 @@ cdef class Variant:
 
         self.__validate()
 
+    
+    def __getstate__(self):
+        return (self.chrom, self.pos, self.ref, self.alt) 
+        
+
+    def __setstate__(self, state):        
+        self.chrom = state[0]
+        self.pos = state[1]
+        self.ref = state[2]
+        self.alt = state[3]
+
+        self.reference = self.reference
+    
     
     def __format_chrom_name(self, chrom, **kwargs):
         if kwargs.get("vcf", False):
@@ -299,6 +323,9 @@ cdef class Variant:
         is_ins = i.is_ins
         
         res = [i]
+        if not i.is_indel:
+            return res
+        
         while self == i:
             right_base = i.right_flank(window=1)
             if is_ins:
@@ -359,10 +386,10 @@ cdef class Variant:
             `pysam.VariantFile <https://pysam.readthedocs.io/en/latest/api.html#pysam.VariantFile>`__ object.
 
         matchby : string
-            - "normalization" (default) matches by normalizing VCF records. 
+            - "normalization" (default) matches by normalizing VCF records.
             - "locus" matches by the normalized genomic locus.  
             - "exact" finds the exact matche without normalization. 
-            
+                
         window : integer
             searches the VCF records in indel position +/- window.
             

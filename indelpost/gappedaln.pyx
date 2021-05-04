@@ -1,4 +1,5 @@
 from .variant import Variant
+from indelpost.utilities cimport split
 from .utilities import split_cigar, get_local_reference, relative_aln_pos
 from .localn import make_aligner, align, findall_indels
 
@@ -24,7 +25,12 @@ def find_by_normalization(
     Returns:
         annoated pileup (list): a list of dictized read (dict) 
     """
-    pileup = [is_target_by_normalization(read, target) for read in pileup]
+    if target.is_indel:
+        pileup = [is_target_by_normalization(read, target) for read in pileup]
+    else:
+        is_single = (target.variant_type == "S")
+        pos, alt_bases = target.pos, target.alt
+        pileup = [is_substitute_target(read, pos, alt_bases, is_single) for read in pileup]
     
     return target, pileup, gap_extension_penalty
 
@@ -56,6 +62,8 @@ def find_by_normalization(
     #    return target, pileup, extension_penalty_used
 
 
+
+
 def is_target_by_normalization(read, target):
     """Check if read contains an indel equivalent to target
     
@@ -73,6 +81,11 @@ def is_target_by_normalization(read, target):
 
     for indel in read[target.variant_type]:
         if target == indel[-1]:
+            
+            pos = target.pos
+            if avoid_left_aln(read, target):
+                pos = indel[0] # pos observed in alignment
+            
             read["is_target"] = True
 
             # trim clipped bases
@@ -89,10 +102,61 @@ def is_target_by_normalization(read, target):
             read["rt_qual"] = indel[7]
 
             read["lt_cigar"], read["rt_cigar"] = split_cigar(
-                read["cigar_string"], target.pos, read["read_start"]
+                read["cigar_string"], pos, read["read_start"]
             )
     
     return read
+
+
+def avoid_left_aln(read, target):
+    #check if normalized pos should be used
+    
+    pos = target.pos #normalized
+    if "N" in read["cigar_string"]:
+        return pos < read["covering_subread"][0]
+
+    return False
+             
+
+def is_substitute_target(read, target_pos, alt_bases, is_single):
+    """this is experimental
+    """
+    if read.get("is_target", False):
+        return read
+    else:
+        read["is_target"] = False
+
+    if read["is_reference_seq"] or not read["is_covering"]:
+        return read
+
+    lt_end, rt_end = split(
+                        read["read_seq"], 
+                        read["cigar_string"], 
+                        target_pos, 
+                        read["read_start"], 
+                        False, 
+                        False,
+                     )
+    
+    lt_base = lt_end[-1] if len(lt_end) else ""
+    if is_single:
+        read["is_target"] = (lt_base == alt_bases)
+    else:
+        rt_fetch_len = min(len(alt_bases) - 1, len(rt_end))
+        rt_bases = rt_end[: rt_fetch_len]
+        read["is_target"] = match_mnv(alt_bases, lt_base, rt_bases)
+
+    return read
+        
+        
+def match_mnv(truth, lt_base, rt_bases):
+    
+    if lt_base and rt_bases:
+        return truth == (lt_base + rt_bases)
+    elif lt_base:
+        return truth[0] == lt_base
+    else:
+        return truth[-len(rt_bases)] == rt_bases
 
 
 def get_most_centered_read(target, pileup, target_annotated=True):

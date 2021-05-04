@@ -27,6 +27,7 @@ cdef class Contig:
         if self.targetpileup:
             consensus = make_consensus(self.target, self.targetpileup, basequalthresh)
             if consensus:
+                
                 self.splice_pattern = get_local_reference(self.target, consensus[2], window=50, unspliced=False, splice_pattern_only=True)
                 
                 self.__make_contig(consensus[0], consensus[1], basequalthresh)
@@ -42,11 +43,12 @@ cdef class Contig:
 
     def __preprocess(self, mapqthresh, donwsample_lim):
         targetpileup = [read for read in self.pileup if read is not None and read["is_target"]]
+        
         self.mapq = 0
 
         #self.splice_pattern = get_local_reference(self.target, targetpileup, window=50, unspliced=False, splice_pattern_only=True)
         
-        self.is_target_right_aligned = sum(read.get("target_right_aligned", 0) for read in targetpileup)
+        #self.is_target_right_aligned = sum(read.get("target_right_aligned", 0) for read in targetpileup)
         
         if not targetpileup:
             return targetpileup
@@ -86,7 +88,8 @@ cdef class Contig:
                     exon_start, exon_end = exon[0], exon[1]
         
         for k, v in self.contig_dict.items():
-            if k < self.target.pos:
+            #if k < self.target.pos:
+            if k < self.lt_end_pos:
                 self.lt_reference_seq += v[0]        
                 self.lt_consensus_seq += v[1]
                 self.lt_consensus_scores.extend([v[2]] * len(v[1]))
@@ -95,7 +98,8 @@ cdef class Contig:
                     self.lt_target_block_consensus_seq += v[1]
                     self.lt_target_block_consensus_scores.extend([v[2]] * len(v[1]))    
 
-            elif k == self.target.pos:
+            #elif k == self.target.pos:
+            elif k == self.lt_end_pos:
                 self.lt_reference_seq += v[0][0]
                 self.lt_target_block_reference_seq += v[0][0]
 
@@ -106,7 +110,8 @@ cdef class Contig:
                 self.lt_target_block_consensus_scores.extend([v[2]])
 
                 self.indel_seq = self.target.indel_seq
-            elif k > self.target.pos:
+            #elif k > self.target.pos:
+            elif k > self.lt_end_pos:
                 self.rt_reference_seq += v[0]
                 self.rt_consensus_seq += v[1]
                 self.rt_consensus_scores.extend([v[2]] * len(v[1]))
@@ -126,19 +131,35 @@ cdef class Contig:
     def __index_by_genome_coord(self, lt_index, rt_index):
         self.lt_genomic_index = lt_index
         self.rt_genomic_index = rt_index
+
+        lt_end_pos = next(iter(lt_index))
+        
+        #hotfix for right-aln-case
+        self.lt_end_pos = lt_end_pos
         
         # the target may be of low quality ("N")
-        if "N" in rt_index[self.target.pos][1]:
-            rt_index[self.target.pos] = (
-                                            rt_index[self.target.pos][0], 
-                                            self.target.alt, 
-                                            rt_index[self.target.pos][2], 
-                                            rt_index[self.target.pos][3]
+        if "N" in rt_index[lt_end_pos][1]:
+            rt_index[lt_end_pos] = (
+                                     rt_index[lt_end_pos][0], 
+                                     self.target.alt, 
+                                     rt_index[lt_end_pos][2], 
+                                     rt_index[lt_end_pos][3]
             )
         
         genome_indexed_contig = lt_index
         genome_indexed_contig.update(rt_index)
         self.contig_dict = OrderedDict(sorted(genome_indexed_contig.items()))
+
+        target_pos_alleles = self.contig_dict[lt_end_pos]
+        ref, alt = target_pos_alleles[0], target_pos_alleles[1]
+        if len(ref) < len(alt):
+            the_shorter, the_longer = ref, alt
+        else:
+            the_shorter, the_longer = alt, ref
+
+        self.is_non_complex_at_target_pos = the_longer[: len(the_shorter)] == the_shorter
+        self.target_ref = ref[1 :]
+        self.target_alt = alt[1 :]
 
 
     def __profile_non_target_variants(self):
@@ -253,16 +274,22 @@ cdef class Contig:
             return None
         
         if split:
-            if self.target.is_del:
-                return self.lt_reference_seq, self.indel_seq, self.rt_reference_seq
+            if self.is_non_complex_at_target_pos:
+                if self.target.is_del:
+                    return self.lt_reference_seq, self.indel_seq, self.rt_reference_seq
+                else:
+                    return  self.lt_reference_seq, "", self.rt_reference_seq
             else:
-                return  self.lt_reference_seq, "", self.rt_reference_seq
+                return self.lt_reference_seq, self.target_ref, self.rt_reference_seq
         else:
-            refseq = (
-                self.lt_reference_seq + self.indel_seq + self.rt_reference_seq
-                if self.target.is_del
-                else self.lt_reference_seq + self.rt_reference_seq
-            )
+            if self.target.is_non_complex_indel:
+                refseq = (
+                    self.lt_reference_seq + self.indel_seq + self.rt_reference_seq
+                    if self.target.is_del
+                    else self.lt_reference_seq + self.rt_reference_seq
+                )
+            else:
+                return self.lt_reference_seq + self.target_ref + self.rt_reference_seq
 
             return refseq
 
@@ -279,16 +306,22 @@ cdef class Contig:
             return None
         
         if split:
-            if self.target.is_ins:
-                return self.lt_consensus_seq, self.indel_seq, self.rt_consensus_seq
+            if self.is_non_complex_at_target_pos:
+                if self.target.is_ins:
+                    return self.lt_consensus_seq, self.indel_seq, self.rt_consensus_seq
+                else:
+                    return self.lt_consensus_seq, "", self.rt_consensus_seq
             else:
-                return self.lt_consensus_seq, "", self.rt_consensus_seq
+                return self.lt_consensus_seq, self.target_alt, self.rt_consensus_seq
         else:
-            conseq = (
-                self.lt_consensus_seq + self.indel_seq + self.rt_consensus_seq
-                if self.target.is_ins
-                else self.lt_consensus_seq + self.rt_consensus_seq
-            )
+            if self.target.is_non_complex_indel:
+                conseq = (
+                    self.lt_consensus_seq + self.indel_seq + self.rt_consensus_seq
+                    if self.target.is_ins
+                    else self.lt_consensus_seq + self.rt_consensus_seq
+                )
+            else:
+                conseq = self.lt_consensus_seq + self.target_alt + self.rt_consensus_seq
 
             return conseq
 

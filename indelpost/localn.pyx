@@ -209,7 +209,7 @@ def is_target_by_ssw(
     
     ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     
-    if target_indel.count_repeats() < 4:
+    if target_indel.count_repeats() < 1:
         if len(mut_cigar_list) == 1:
             mapped_len = int(mut_cigar_list[0][:-1])
             mut_ref = mut_ref_lt + mut_ref_mid + mut_ref_rt

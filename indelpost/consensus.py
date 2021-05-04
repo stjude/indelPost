@@ -13,7 +13,6 @@ cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 def make_consensus(target, targetpileup, basequalthresh):
      
     expected_ptrn = most_common_gap_ptrn(targetpileup)
-    
     targetpileup = [read for read in targetpileup if expected_ptrn == get_gap_ptrn2(read)]
     
     target_pos, target_type, target_len = (
@@ -21,7 +20,6 @@ def make_consensus(target, targetpileup, basequalthresh):
         target.variant_type,
         len(target.indel_seq),
     )
-    
     lt_indexed, rt_indexed, contributing_reads = [], [], []
     for read in targetpileup:
         target_pos = target_pos if read.get("target_right_shifted", 0) else target_pos
@@ -37,9 +35,11 @@ def make_consensus(target, targetpileup, basequalthresh):
                     read["lt_ref"],
                     read["lt_qual"],
                  )
+            
+            
             rt = index_bases(
                     read["read_start"],
-                    target_pos,
+                    max(k for k, v in lt.items()),
                     target_type,
                     target_len,
                     read["rt_cigar"],
@@ -64,7 +64,6 @@ def make_consensus(target, targetpileup, basequalthresh):
             #traceback.print_exc() 
             pass
 
-    
     if lt_indexed and rt_indexed:
         lt_consensus = consensus_data(lt_indexed, True, basequalthresh)
         rt_consensus = consensus_data(rt_indexed, False, basequalthresh)
@@ -87,6 +86,7 @@ def index_bases(
 ):
     indexedbases = {}
     
+    orig = cigar
     cigar = merge_consecutive_gaps(cigar)
     
     if left:

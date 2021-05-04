@@ -3,7 +3,6 @@
 Examples
 =========
 
-
 Querying VCF file
 -----------------
 Below are *NF1* tumor suppressor gene indels regsitered in `COSMIC(v89) <https://cancer.sanger.ac.uk/cosmic>`__ . 
@@ -68,9 +67,9 @@ Decomposition may improve the searchability. Using `gnomAD(v3.0) <https://gnomad
     for d in decomposed:
         
         # chr1 114299168 A AT
-        # chr1 114299169 CAG C
-        # chr1 114299173 G C
-        # chr1 114299174 A T
+        # chr1 114299169 CAG C (found in v3.0)
+        # chr1 114299173 G C (found in v3.0)   
+        # chr1 114299174 A T (found in v3.0)
         
         print(d.chrom, d.pos, d.ref, d.alt)
       
@@ -79,12 +78,41 @@ Decomposition may improve the searchability. Using `gnomAD(v3.0) <https://gnomad
             # do something...
             
     
+Annotating complex indels from non-complex indel inputs
+-------------------------------------------------------
+Complex indel representaions can be obtained from a variant caller output which only contains non-complex alleles.
+Suppose the output VCF file is parsed to "indel_calls.tab"::
 
+    CHROM   POS     REF     ALT
+    1       123     A       ATC
+    1       4567    GTCC    G
+    1       8901    TGA     T
+    ...
 
+You can annotate complex indels for the table::
+    
+    import pysam
+    import pandas as pd
+    from indelpost import Variant, VariantAlignment
 
+    reference = pysam.FastaFile("/path/to/reference.fa")
+    bam = pyasm.AlignmetnFile("/path/to/bam_used_for_variant_calling.bam")
 
+    def annot_complex_indel(row):
+        var = Variant(row["CHROM"], row["POS"], row["REF"], row["ALT"], reference)
+        varaln = VariantAlignment(var, bam)
+        
+        # phased Variant object is returned 
+        # may still be non-complex
+        cmplx = varaln.phase(how="complex")
 
-
+        return cmplx.pos, cmplx.ref, cmplx.alt
+        
+    df = pd.read_csv("indel_calls.tab", sep="\t")
+    
+    df["COMPLEX_POS"], df["COMPLEX_REF"], df["COMPLEX_ALT"] = zip(*df.apply(annot_complex_indel, axis=1))                 
+    
+    ...
 
 
  

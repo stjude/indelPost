@@ -10,11 +10,13 @@ cdef class Contig:
     cdef Variant target
     cdef list pileup, targetpileup
     cdef public bint qc_passed, failed
-    cdef int donwsample_lim
+    cdef int donwsample_lim, lt_end_pos
     cdef object lt_genomic_index, rt_genomic_index
     cdef int start, end
     cdef str lt_reference_seq, rt_reference_seq
     cdef str lt_target_block_reference_seq, rt_target_block_reference_seq
+    cdef bint is_non_complex_at_target_pos
+    cdef str target_ref, target_alt
     cdef double low_consensus_thresh
     cdef public int is_target_right_aligned
     cdef public object contig_dict

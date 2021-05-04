@@ -1,4 +1,4 @@
-# cython: embedsignature=True
+#cython: embedsignature=True
 #cython: profile=False
 
 cimport cython
@@ -56,7 +56,7 @@ cdef class VariantAlignment:
         `MarkDuplicate <https://broadinstitute.github.io/picard/command-line-overview.html#MarkDuplicates>`__. 
     
     downsample_threshold : integer
-        downsamples to the threshold if the covearge at the input locus exceeds the threshold (default to 3000).
+        downsamples to the threshold if the covearge at the input locus exceeds the threshold (default to 1000).
         
     mapping_quality_threshold : integer
         reads with a mapping quality (MAPQ) < the threshold (default 1) will be filtered. 
@@ -106,8 +106,7 @@ cdef class VariantAlignment:
         
         self.target = target
         
-        if not target.is_non_complex_indel():
-            #raise Exception("Expected input is a non-complex indel")
+        if not target.is_non_complex_indel() and target.is_indel:
             
             if auto_adjust_extension_penalty:
                 decomposed_variants = target.decompose_complex_variant()
@@ -183,7 +182,7 @@ cdef class VariantAlignment:
                         self.basequalthresh,
                         bypass_search=True
                     )
-
+            
             contig = Contig(
                 self.__target,
                 preprocess_for_contig_construction(
@@ -358,7 +357,8 @@ cdef class VariantAlignment:
                else:
                   pileup = target + nontarget    
                     
-            pileup = find_by_softclip_split(self.__target, contig, pileup)
+            #depreciated
+            #pileup = find_by_softclip_split(self.__target, contig, pileup)
             
             pileup = find_by_smith_waterman_realn(
                 self.__target,
@@ -427,7 +427,7 @@ cdef class VariantAlignment:
                 if sum(dirty_target_pileup) == len(dirty_target_pileup):
                     failed.is_low_quality = True  
                 else:
-                    failed.failed_to_construct = True
+                    failed.failed_anyway = True
             else:
                 failed.target_not_found = True
 
@@ -722,9 +722,6 @@ cdef list preprocess_for_contig_construction(
         _targetpileup = [
             read for read in targetpileup if read.get("cigar_updated", False) 
         ]
-        
-        if len(_targetpileup) > 2:
-            _targetpileup = _targetpileup[: min(20, int(len(_targetpileup) / 1.5 ))]
         
         if _targetpileup:    
             targetpileup = _targetpileup
