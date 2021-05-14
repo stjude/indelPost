@@ -358,7 +358,7 @@ cdef class VariantAlignment:
                   pileup = target + nontarget    
                     
             #depreciated
-            #pileup = find_by_softclip_split(self.__target, contig, pileup)
+            pileup = find_by_softclip_split(self.__target, contig, pileup)
             
             pileup = find_by_smith_waterman_realn(
                 self.__target,

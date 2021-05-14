@@ -104,7 +104,7 @@ cdef class Variant:
 
     
     def __getstate__(self):
-        return (self.chrom, self.pos, self.ref, self.alt) 
+        return (self.chrom, self.pos, self.ref, self.alt, self.reference.filename) 
         
 
     def __setstate__(self, state):        
@@ -113,7 +113,7 @@ cdef class Variant:
         self.ref = state[2]
         self.alt = state[3]
 
-        self.reference = self.reference
+        self.reference = FastaFile(state[4])
     
     
     def __format_chrom_name(self, chrom, **kwargs):
