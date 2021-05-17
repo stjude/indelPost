@@ -15,7 +15,8 @@ Contents
 .. toctree::
    :maxdepth: 2
    
-   indelpost_api.rst
+   intro.rst
+   api.rst
    examples.rst
 
 

@@ -15,7 +15,7 @@ The VCF entries are juxtaposed with the alignments against GRCh38.
 
 |
 
-To query the COSMIC VCF database for these indels::
+Using del2 (bottom) as example, query the COSMIC VCF database::
     
     import pysam
     from indelpost import Variant
@@ -23,22 +23,25 @@ To query the COSMIC VCF database for these indels::
     reference = pysam.FastaFile("/path/to/GRCh38.fa")
     cosmic = pysam.VariantFile("/path/to/cosmic.v89.vcf(.gz)")
 
-    # suppose your input is del2
+    # del2 
     v = Variant("17", 31224665, "CC", "C", reference)
     
-    # query by normalization (default)
+Normalization query (default) returns VCF entries that are identical after normalization::
+    
     norm_hits = v.query_vcf(cosmic) 
     
     for hit in norm_hits:
         print(hit["INFO"]["CNT"]) #COSMIC counts for del1 and del2 
 
-    # query for normalized genomic coordinate
+Locus query returns VCF entries located at the normalized genomic locus::
+
     locus_hits = v.query_vcf(cosmic, matchby="locus")
 
     for hit in locus_hits:
         print(hit["INFO"]["CNT"]) #COSMIC counts for del1, del2, ins1, ins2, and in3
+
+Exact query only returns a VCF entry matching without normalization:: 
         
-    # exact match (no normalization)
     exact_hit = v.query(cosmic, matchby="exact")
     
     print(exact_hit[0]["INFO"]["CNT"]) #COSMIC count for del2 only
@@ -47,41 +50,59 @@ To query the COSMIC VCF database for these indels::
     
 Decomposing complex indels
 --------------------------
-Complex indels may be registered as a set of non-complex events in databases.
-Decomposition may improve the searchability. Using `gnomAD(v3.0) <https://gnomad.broadinstitute.org>`__ as example:: 
+Reduce a complex indel to a set of simple events:: 
 
     import pysam
     from indelpost import Variant
 
     reference = pysam.FastaFile("/path/to/GRCh38.fa")
-    gnomad = pysam.VariantFile("/path/to/gnomad.3.0.vcf(.gz))
 
     v = Variant("chr1", 114299169, "CAGTGA", "TCTCT", reference)
 
-    # no hits -> empty list
-    no_hits = v.query_vcf(gnomad)
-
-    # list of non-complex Variant objects 
-    decomposed = v.decompose_complex_variant()
+    decomposed = v.decompose_complex_variant() # list of Variant objects
     
     for d in decomposed:
+
+        print(d.chrom, d.pos, d.ref, d.alt)
         
         # chr1 114299168 A AT
-        # chr1 114299169 CAG C (found in v3.0)
-        # chr1 114299173 G C (found in v3.0)   
-        # chr1 114299174 A T (found in v3.0)
+        # chr1 114299169 CAG C 
+        # chr1 114299173 G C 
+        # chr1 114299174 A T 
         
-        print(d.chrom, d.pos, d.ref, d.alt)
-      
-        if d.query_vcf(gnomad):
-        
-            # do something...
+
+.. image:: cplx_1.svg
+   :width: 400
+   :height: 40
+   :align: center
             
-    
-Annotating complex indels from non-complex indel inputs
+|
+
+Tuning parameters may lead to a different decomposition::
+
+    decomposed = v.decompose_complex_variant(gap_extension_penalty=3)    
+
+    for d in decomposed:
+
+        print(d.chrom, d.pos, d.ref, d.alt)
+        
+        # chr1 114299168 AC A
+        # chr1 114299170 A T
+        # chr1 114299171 G C
+        # chr1 114299173 G C
+        # chr1 114299174 A T
+
+.. image:: cplx_2.svg
+    :width: 400
+    :height: 40
+    :align: center
+
+|
+
+Annotating complex indels from simple indels
 -------------------------------------------------------
-Complex indel representaions can be obtained from a variant caller output which only contains non-complex alleles.
-Suppose the output VCF file is parsed to "indel_calls.tab"::
+Complex indel representaions can be obtained from a variant caller output with simple alleles.
+Suppose the output VCF file is parsed to "simple_indels.tab"::
 
     CHROM   POS     REF     ALT
     1       123     A       ATC
@@ -89,7 +110,7 @@ Suppose the output VCF file is parsed to "indel_calls.tab"::
     1       8901    TGA     T
     ...
 
-You can annotate complex indels for the table::
+Annotate complex indels for the table::
     
     import pysam
     import pandas as pd
@@ -99,16 +120,14 @@ You can annotate complex indels for the table::
     bam = pyasm.AlignmetnFile("/path/to/bam_used_for_variant_calling.bam")
 
     def annot_complex_indel(row):
-        var = Variant(row["CHROM"], row["POS"], row["REF"], row["ALT"], reference)
-        varaln = VariantAlignment(var, bam)
+        v = Variant(row["CHROM"], row["POS"], row["REF"], row["ALT"], reference)
+        valn = VariantAlignment(v, bam)
         
-        # phased Variant object is returned 
-        # may still be non-complex
-        cmplx = varaln.phase(how="complex")
+        v_cplx = v.phase(how="complex") # v_cplx may be simple 
 
-        return cmplx.pos, cmplx.ref, cmplx.alt
+        return v_cplx.pos, v_cplx.ref. v_cplx.alt
         
-    df = pd.read_csv("indel_calls.tab", sep="\t")
+    df = pd.read_csv("simple_indels.tab", sep="\t")
     
     df["COMPLEX_POS"], df["COMPLEX_REF"], df["COMPLEX_ALT"] = zip(*df.apply(annot_complex_indel, axis=1))                 
     

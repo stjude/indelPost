@@ -15,7 +15,7 @@ cdef class NullVariant:
     Parameters
     ----------
     chrom : string
-        contig name.
+        contig name
 
     pos : integer
         1-based genomic position
@@ -32,7 +32,7 @@ cdef class NullVariant:
         self.reference = reference
 
     def __getstate__(self):
-        return (self.chrom, self.pos, self.ref, self.alt)
+        return (self.chrom, self.pos, self.ref, self.alt, self.reference.filename)
 
     def __setstate__(self, state):
         self.chrom = state[0]
@@ -40,7 +40,7 @@ cdef class NullVariant:
         self.ref = state[2]
         self.alt = state[3]
 
-        self.reference = self.reference
+        self.reference = FastaFile(state[4])
 
     def __bool__(self):
         return False
