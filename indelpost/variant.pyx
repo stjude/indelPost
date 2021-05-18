@@ -112,7 +112,7 @@ cdef class Variant:
         self.pos = state[1]
         self.ref = state[2]
         self.alt = state[3]
-
+        
         self.reference = FastaFile(state[4])
     
     

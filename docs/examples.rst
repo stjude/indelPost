@@ -133,5 +133,71 @@ Annotate complex indels for the table::
     
     ...
 
+Integrating indel call sets
+-----------------------------------
+In the pileup, two variant callers reported different sets of indels to integrate.
 
+
+.. image:: pileup.svg
+   :width: 600
+   :height: 50
+   :align: center
+   
+|
+
+:: 
+
+   Caller A                      Caller B 
+   CHROM POS REF ALT             CHROM POS REF ALT
+   N     3   TC  C               N     3   TC  C
+   N     9   GAA G               N     9   G   GGCTGCT 
+   N     11  A   AGCTGCTGG       N     15  G   GA
+
+
+
+Prepare phased indel calls::
+
+    reference = pysam.FastaFile("/path/to/reference.fa")
+    bam = pysam.AlignmentFile("/path/to/thisdata.bam")
+     
+    v_a1_phased = VariantAlignment(Variant("N", 3, "TC", "C", reference), bam).phase()
+    v_a2_phased = VariantAlignment(Variant("N", 9, "GAA", "G", reference), bam).phase()
+    ...
+    v_b3_phased = VariantAlignment(Variant("N", 15, "G", "GA", reference), bam).phase()
+
+        
+Use `set <https://docs.python.org/3/tutorial/datastructures.html#sets>`__ to integrate them::
+    
+    call_set_A = {v_a1_phased, v_a2_phased, v_a3_phased}
+    call_set_B = {v_b1_phased, v_b2_phased, v_b3_phased}
+
+    union = call_set_A | call_set_B
+
+    for v in union:
+        print(v.chrom, v.pos, v.ref, v.alt)
+        
+        # N, 3, TC, C
+        # N, 10, AA, GCTGCTGG
+        # N, 15, GA, A
+
+    
+    consensus = call_set_A & call_set_B
+
+    for v in consensus:
+        print(v.chrom, v.pos, v.ref, v.alt)
+
+        # N, 10, AA, GCTGCTGG
+
+
+
+
+
+
+
+
+
+
+
+
+   
  
