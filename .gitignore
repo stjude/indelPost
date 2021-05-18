@@ -1,6 +1,7 @@
 # indelPost specific
 indelpost/setup.py
 indelpost/*.c
+test
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
