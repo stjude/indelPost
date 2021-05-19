@@ -636,7 +636,7 @@ cdef bint count_as_non_target(dict read, int pos, int margin):
         margin = 0 if read["is_spliced"] else margin
         covering_subread = read["covering_subread"]
 
-        if covering_subread[0] + margin < pos < covering_subread[1] - margin:
+        if covering_subread[0] + margin <= pos <= covering_subread[1] - margin:
             return True
 
 
