@@ -78,7 +78,7 @@ Reduce a complex indel to a set of simple events::
             
 |
 
-Tuning parameters may lead to a different decomposition::
+Tune parameters to obtain a different decomposition::
 
     decomposed = v.decompose_complex_variant(gap_extension_penalty=3)    
 
@@ -186,18 +186,5 @@ Use `set <https://docs.python.org/3/tutorial/datastructures.html#sets>`__ to int
     for v in consensus:
         print(v.chrom, v.pos, v.ref, v.alt)
 
+        # N, 3, TC, C
         # N, 10, AA, GCTGCTGG
-
-
-
-
-
-
-
-
-
-
-
-
-   
- 

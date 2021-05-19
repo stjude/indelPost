@@ -3,11 +3,18 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-indelPost: harmonizing indel call/alignment ambiguities. 
+indelPost: Python library for indel. 
 ===================================================================
 
+:Author: Kohei Hagiwara
 :Date: |today|
 :Version: |version|
+
+
+To install::
+    
+    pip install indelpost
+
 
 Contents
 --------
@@ -18,6 +25,7 @@ Contents
    intro.rst
    api.rst
    examples.rst
+   benchmark.rst
 
 
 Indices and tables
