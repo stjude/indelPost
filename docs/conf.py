@@ -14,7 +14,11 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
+_libdir = "../build/lib.%s-%s-%s.%s" % (os.uname()[0].lower(), os.uname()[4],
+                                        sys.version_info[0], sys.version_info[1])
+
+if sys.version_info[0], sys.version_info[1]):
+    sys.path.insert(0, os.path.abspath(_libdir))
 
 
 # -- Project information -----------------------------------------------------
