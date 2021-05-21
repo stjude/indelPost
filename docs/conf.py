@@ -16,10 +16,9 @@ import os
 import sys
 _libdir = "../build/lib.%s-%s-%s.%s" % (os.uname()[0].lower(), os.uname()[4], sys.version_info[0], sys.version_info[1])
 
-#_libdir = ".."
 
-#if os.path.exists(_libdir):
-sys.path.insert(0, os.path.abspath(_libdir))
+if os.path.exists(_libdir):
+    sys.path.insert(0, os.path.abspath(_libdir))
 
 
 # -- Project information -----------------------------------------------------
