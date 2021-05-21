@@ -14,7 +14,7 @@ indelPost: Python library for indel.
 To install::
     
     git clone https://github.com/stjude/indelPost.git
-    cd indelpost 
+    cd indelPost 
     python setup.py install
 
 
