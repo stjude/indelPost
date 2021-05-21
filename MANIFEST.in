@@ -1,0 +1,3 @@
+include requirements.txt
+include indelpost/*.pyx
+include indelpost/*.pyd
