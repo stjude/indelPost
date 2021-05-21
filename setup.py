@@ -82,5 +82,5 @@ setup(
     packages=find_packages(exclude=["tests"]),
     cmdclass={"build_ext": build_ext},
     ext_modules=cythonize(extensions, compiler_directives={"language_level": "3"}),
-    #install_requires=["ssw-py"],
+    install_requires=["ssw-py"],
 )
