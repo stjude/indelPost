@@ -21,9 +21,18 @@ or::
     cd indelPost 
     python setup.py install
 
-.. note::
+Installing indelPost also installs the dependency:
 
-   indelPost has only been tested on Linux. 
+    - python>=3.6.0
+    - numpy>=1.16.0
+    - pysam>=0.15.0
+    - cython>=0.29.12
+    - ssw-py==0.2.6
+
+
+.. note::
+    
+    indelPost is supported for Linux.
 
 Contents
 --------
