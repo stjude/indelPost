@@ -1,8 +1,0 @@
-0. rm build dist indelpost.egg-info
-1. rm indelpost/*.c
-2. singularity shell manylinux1_x86_64_latest.sif
-3. /opt/python/cp36-cp36m/bin/python setup.py bdist_wheel sdist
-4. /opt/python/cp36-cp36m/bin/python auditwheel repair ./dist/indelpost-*-cp36-cp36m-linux_x86_64.whl
-5. mv wheelhouse/* dist
-6. rm dist/*cp36-cp36m-linux_x86_64.whl
-
