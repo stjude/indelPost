@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-indelPost: Python library for indel. 
+indelPost: Python library for simple and complex indels. 
 ===================================================================
 
 :Author: Kohei Hagiwara
