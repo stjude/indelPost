@@ -6,7 +6,7 @@ Examples
 Querying VCF file
 -----------------
 Below are *NF1* tumor suppressor gene indels regsitered in `COSMIC(v89) <https://cancer.sanger.ac.uk/cosmic>`__ . 
-The VCF entries are juxtaposed with the alignments against GRCh38. 
+For each variant, the VCF allele information is shown on the left with the alignments vs. GRCh38 on the right. 
 
 .. image:: nf1.svg
    :width: 600

@@ -10,5 +10,5 @@ Benchmarking
 
 .. tip::
     
-    Consider split data into smaller chunks and run in parallel for genome-wide indel datasets.
+    For genome-wide indel datasets, consider splitting your data into smaller chunks and analyzing them in parallel.
 
