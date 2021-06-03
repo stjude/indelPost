@@ -159,7 +159,7 @@ cdef class VariantAlignment:
                 basequalthresh=self.basequalthresh,
             )
             
-            self.__target, pileup, exptension_penalty_used = find_by_normalization(
+            self.__target, pileup, exptension_penalty_used, self._observed_pos = find_by_normalization(
                 self.__target,
                 pileup,
                 self.window,
@@ -330,7 +330,6 @@ cdef class VariantAlignment:
                        self.mismatch_penalty,
                        grid,
                    )
-               
               
                if res:
                    nontarget = [read for read in nontarget if read not in res[1]]
@@ -470,7 +469,7 @@ cdef class VariantAlignment:
             
 
     def count_alleles(
-        self, fwrv=False, by_fragment=False, quality_window=None, quality_threshold=None
+        self, fwrv=False, by_fragment=False, estimated_count=False, quality_window=None, quality_threshold=None
     ):
         """returns a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ of
         read counts:  (#ref reads, #alt reads).
@@ -482,6 +481,8 @@ cdef class VariantAlignment:
                 ( (ref-fw, ref-rv), (alt-fw, alt-rv) ).
             by_fragment : bool
                 counts by fragment. Overlapping fw and rv reads are counted as one.
+            estimated_count : bool
+                True to return estimated count when the coverage is higher than :meth:`~indelpost.VariantAlignment.downsample_theshold`.
             quality_window : integer
                 specifies the range of base call quality filter. indel pos +/- quality_window. 
             quality_threshold : integer
@@ -490,7 +491,7 @@ cdef class VariantAlignment:
 
         cdef dict read
         
-        pos, indel_len = self.target.pos, len(self.target.indel_seq)
+        pos, indel_len = self._observed_pos, len(self.target.indel_seq)
         margin = min(indel_len / 2, 5) if indel_len > 3 else indel_len
 
         reads = self.__pileup
@@ -529,15 +530,18 @@ cdef class VariantAlignment:
 
         fw_non_target = set(fw_non_target) - fwrv_target
         rv_non_target = set(rv_non_target) - fwrv_target
+
+        est = self.__sample_factor if estimated_count else 1
+
         if fwrv:
             return (
                 (
-                    int(len(fw_non_target) * self.__sample_factor),
-                    int(len(rv_non_target) * self.__sample_factor),
+                    int(len(fw_non_target) * est),
+                    int(len(rv_non_target) * est),
                 ),
                 (
-                    int(len(fw_target) * self.__sample_factor),
-                    int(len(rv_target) * self.__sample_factor),
+                    int(len(fw_target) * est),
+                    int(len(rv_target) * est),
                 ),
             )
         else:
@@ -549,8 +553,8 @@ cdef class VariantAlignment:
                 fwrv_target = len(fw_target) + len(rw_target)
 
             return (
-                int(fwrv_non_target * self.__sample_factor),
-                int(fwrv_target * self.__sample_factor),
+                int(fwrv_non_target * est),
+                int(fwrv_target * est),
             )
 
 
@@ -758,7 +762,6 @@ def update_spliced_read_info(
 
     return right_aligner(read, target)
 
-
 def right_aligner(read, target):
     """Right align indels around splice site"""
     
@@ -866,6 +869,13 @@ def right_aligner(read, target):
                                                     reverse=False
                                              ) 
             read["target_right_shifted"] = rt_aln_pos
+
+            indel_len = len(target.indel_seq)
+            if target.is_ins:
+                read["rt_flank"] = read["rt_flank"][indel_len :]
+                read["rt_qual"] = read["rt_qual"][indel_len :]
+            else:
+                read["rt_ref"] = read["rt_ref"][indel_len :]
         else:
             read["lt_cigar"], read["rt_cigar"] = split_cigar(read["cigar_string"], target.pos, read["read_start"])
     except:

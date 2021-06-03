@@ -342,12 +342,18 @@ cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
 cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, int pos, int rpos):
     spliced_subreads = get_spliced_subreads(cigar_string, read_start, read_end)
 
+    
     is_covering = False
     covering_subread = None
     for subread in spliced_subreads:
-        if subread[0] <= pos <= subread[1] or subread[0] <= rpos <= subread[1]:
+        if subread[0] <= pos <= subread[1]:
             is_covering = True
             covering_subread = tuple(subread)
+        elif subread[0] <= rpos <= subread[1]:
+            is_covering = True
+            covering_subread = tuple(subread)
+            pos = rpos
+
 
     intron_ptrn = (0, 0)
     if len(spliced_subreads) > 1:
@@ -384,7 +390,7 @@ cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, in
     else:
         is_spliced = False
         splice_ptrn = ("", "")
-
+    
     return is_covering, covering_subread, is_spliced, splice_ptrn, intron_ptrn
 
 
@@ -625,7 +631,7 @@ def retarget(
     
     if not candidates:
         return None
-    elif len(target.indel_seq) < 2 and not target in candidates:
+    elif len(target.indel_seq) <= 3 and not target in candidates:
         return None
     
     u_candidates = to_flat_list([var._generate_equivalents_private() for var in set(candidates)])
@@ -931,6 +937,7 @@ def update_pileup(
     
     rpos = max(v.pos for v in new_target.generate_equivalents())
     for read in pileup:
+
         (
             is_covering,
             covering_subread,
@@ -940,7 +947,7 @@ def update_pileup(
         ) = parse_spliced_read(
             read["cigar_string"], read["read_start"], read["read_end"], new_target.pos, rpos
         )
-           
+
         read["is_covering"] = is_covering
         read["covering_subread"] = covering_subread
         read["is_spliced"] = is_spliced

@@ -29,9 +29,9 @@ def get_gap_ptrn2(read):
     pos = read["aln_start"]
     for cigar in read["cigar_list"]:
         event, event_len = cigar[-1], int(cigar[:-1])
-        if event in ("M", "X", "=", "N"):
+        if event in ("M", "X", "="):
             pos += event_len
-        elif event in ["I", "D"]:
+        elif event in ["I", "D", "N"]:
             ptrn += "{}@{}".format(cigar, pos-1)
             if event == "D":
                 pos += event_len
@@ -269,9 +269,11 @@ cdef list get_spliced_subreads(str cigarstring, int read_start_pos, int read_end
     
     if prev_event != "N":
         pos_lst.append(read_end_pos) 
+    
     while i < len(pos_lst):
         res.append(pos_lst[i : i+2])
         i += 2
+    
     return res
 
 

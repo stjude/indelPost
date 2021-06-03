@@ -39,6 +39,7 @@ def phase_nearby_variants(
     #    return None
      
     indexed_contig = contig.contig_dict
+    target_pos_on_contig = contig.lt_end_pos
     
     # no phasable variants
     variants_to_phase = contig.mismatches + contig.non_target_indels
@@ -48,10 +49,10 @@ def phase_nearby_variants(
     # phase all phasables within the target exon (hard phasing)
     if hard:
         variants_list = []
-        cleaned, variant_list = precleaning(indexed_contig, variants_list, target.pos, pileup)
+        cleaned, variant_list = precleaning(indexed_contig, variants_list, target_pos_on_contig, pileup, target)
         return greedy_phasing(target, cleaned)
     else: 
-        indexed_contig, variants_to_phase = precleaning(indexed_contig, variants_to_phase, target.pos, pileup)
+        indexed_contig, variants_to_phase = precleaning(indexed_contig, variants_to_phase, target_pos_on_contig, pileup)
     
     if not variants_to_phase:
         return  make_target_obj_from_contig(target, indexed_contig)
@@ -65,9 +66,9 @@ def phase_nearby_variants(
     lt_loci, rt_loci, tmp = [], [], variants_to_phase.copy()
     for var in tmp:
         if is_deletable(var, variants_in_non_targets, indel_repeat_thresh, to_complex):
-            if var.pos < target.pos:
+            if var.pos < target_pos_on_contig:
                 lt_loci.append(var.pos)
-            elif var.pos > target.pos:
+            elif var.pos > target_pos_on_contig:
                 rt_loci.append(var.pos)
             
             variants_to_phase.remove(var)
@@ -79,11 +80,11 @@ def phase_nearby_variants(
     rt_end = min(rt_loci) if rt_loci else np.inf
     
     
-    remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
+    remove_deletables(indexed_contig, lt_end, target_pos_on_contig, rt_end)
     
     mismatches_to_phase = [var for var in variants_to_phase if not var.is_indel and indexed_contig.get(var.pos, False)]
-    non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel and indexed_contig.get(var.pos, False)]
-
+    non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel and indexed_contig.get(var.pos, False) and var != target]
+    
     if variants_to_phase:
         if not non_target_indels_to_phase:
             peak_locs = locate_mismatch_cluster_peaks(
@@ -92,7 +93,7 @@ def phase_nearby_variants(
             
             if peak_locs:
                 remove_deletables(
-                    indexed_contig, peak_locs[0], target.pos, peak_locs[1]
+                    indexed_contig, peak_locs[0], target_pos_on_contig, peak_locs[1]
                 )
             else:
                 return make_target_obj_from_contig(target, indexed_contig)
@@ -105,12 +106,12 @@ def phase_nearby_variants(
             if max(target_len, non_target_max_len) < 4:
                 indel_neighborhood = int(indel_neighborhood / 2) + 1
             
-            remove_common_substrings(indexed_contig, target.pos, indel_neighborhood)
+            remove_common_substrings(indexed_contig, target_pos_on_contig, indel_neighborhood)
 
             lt_end = end_point(indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=True)
             rt_end = end_point(indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=False)
             
-            remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
+            remove_deletables(indexed_contig, lt_end, target_pos_on_contig, rt_end)
 
     cvar = greedy_phasing(target, indexed_contig)
     
@@ -132,7 +133,6 @@ def greedy_phasing(target, indexed_contig):
     cpos = 0
     cref = ""
     calt = ""
-    
     for k, v in indexed_contig.items():
         if not cpos:
             cpos = k
@@ -193,9 +193,9 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup, limit_
         if spliced_subreads:
             lt_exon_end = min([subread[0] for subread in spliced_subreads])
             rt_exon_end = max([subread[1] for subread in spliced_subreads])
-            lt_lim = max(lt_lim, lt_exon_end)
-            rt_lim = min(rt_lim, rt_exon_end)
-
+            lt_lim = max(lt_lim, lt_exon_end - 1)
+            rt_lim = min(rt_lim, rt_exon_end + 1)
+        
         tmp = genome_indexed_contig.copy()
         for k, v in genome_indexed_contig.items():
             if k <= lt_lim or rt_lim <= k:
