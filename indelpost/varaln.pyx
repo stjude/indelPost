@@ -482,7 +482,7 @@ cdef class VariantAlignment:
             by_fragment : bool
                 counts by fragment. Overlapping fw and rv reads are counted as one.
             estimated_count : bool
-                True to return estimated count when the coverage is higher than :meth:`~indelpost.VariantAlignment.downsample_theshold`.
+                True to return estimated count when the coverage is higher than :attr:`~indelpost.VariantAlignment.downsample_theshold`.
             quality_window : integer
                 specifies the range of base call quality filter. indel pos +/- quality_window. 
             quality_threshold : integer
