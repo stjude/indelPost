@@ -45,12 +45,4 @@ Contents
    examples.rst
    benchmark.rst
 
-
-Indices and tables
-------------------
-
-Contetns:
-
 * :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

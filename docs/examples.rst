@@ -28,25 +28,32 @@ Using del2 (bottom) as example, query the COSMIC VCF database::
     
 Normalization query (default) returns VCF entries that are identical after normalization::
     
-    norm_hits = v.query_vcf(cosmic) 
+    norm_hits = v.query_vcf(cosmic) # list of hit VCF entries (del1 and del2)
     
     for hit in norm_hits:
-        print(hit["INFO"]["CNT"]) #COSMIC counts for del1 and del2 
+        print(hit["INFO"]["CNT"]) 
+        
+    #COSMIC count for del1
+    #COSMIC count for del2  
 
 Locus query returns VCF entries located at the normalized genomic locus::
 
-    locus_hits = v.query_vcf(cosmic, matchby="locus")
+    locus_hits = v.query_vcf(cosmic, matchby="locus") # list of hit VCF entries (all 5 indels)
 
     for hit in locus_hits:
-        print(hit["INFO"]["CNT"]) #COSMIC counts for del1, del2, ins1, ins2, and in3
+        print(hit["INFO"]["CNT"]) 
+        
+    #COSMIC count for del1
+    ...
+    #COSMIC count for ins3
 
 Exact query only returns a VCF entry matching without normalization:: 
         
-    exact_hit = v.query(cosmic, matchby="exact")
+    exact_hit = v.query(cosmic, matchby="exact") # list of a hit VCF entry (del2)
     
-    print(exact_hit[0]["INFO"]["CNT"]) #COSMIC count for del2 only
+    print(exact_hit[0]["INFO"]["CNT"]) 
     
-    
+    #COSMIC count for del2
     
 Decomposing complex indels
 --------------------------
@@ -101,8 +108,8 @@ Tune parameters to obtain a different decomposition::
 
 Annotating complex indels from simple indels
 -------------------------------------------------------
-Complex indel representaions can be obtained from a variant caller output with simple alleles.
-Suppose the output VCF file is parsed to "simple_indels.tab"::
+Complex indel representations can be obtained from a variant caller output with simple alleles.
+Suppose the output VCF file is parsed to a flat-table "simple_indels.tab"::
 
     CHROM   POS     REF     ALT
     1       123     A       ATC
@@ -135,8 +142,7 @@ Annotate complex indels for the table::
 
 Integrating indel call sets
 -----------------------------------
-In the pileup, two variant callers reported different sets of indels to integrate.
-
+Given the data represented by the pileup below, two variant callers reported different sets of indels. These can be integrated with indelpost.
 
 .. image:: pileup.svg
    :width: 600
@@ -166,7 +172,7 @@ Prepare phased indel calls::
     v_b3_phased = VariantAlignment(Variant("N", 15, "G", "GA", reference), bam).phase()
 
         
-Use `set <https://docs.python.org/3/tutorial/datastructures.html#sets>`__ to integrate them::
+Integrate them using `set <https://docs.python.org/3/tutorial/datastructures.html#sets>`__ operations::
     
     call_set_A = {v_a1_phased, v_a2_phased, v_a3_phased}
     call_set_B = {v_b1_phased, v_b2_phased, v_b3_phased}

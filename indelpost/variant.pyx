@@ -1,4 +1,3 @@
-# cython: embedsignature=True
 # cython: profile=True
 
 from .utilities import *
@@ -8,8 +7,7 @@ from pysam.libcbcf cimport VariantFile
 
 
 cdef class NullVariant:
-    """This class is returned when :class:`~indelpost.VariantAlignment` cannot find the 
-    target indel in the BAM file. Boolean expression evaluates to `False <https://docs.python.org/3/library/stdtypes.html#boolean-values>`__. Ref and Alt alleles are the 
+    """This class is returned when :class:`~indelpost.VariantAlignment` cannot find the target indel in the BAM file. Boolean expression evaluates to `False <https://docs.python.org/3/library/stdtypes.html#boolean-values>`__. Ref and Alt alleles are the 
     reference base at the locus.
     
     Parameters

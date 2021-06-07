@@ -44,7 +44,7 @@ Upon creation, the :class:`~indelpost.VariantAlignment` object realigns the RNA-
 
     valn = VariantAlignment(v, bam)
 
-Now, check the expression by :meth:`~indelpost.VariantAlignment.count_alleles()`::
+Now, :meth:`~indelpost.VariantAlignment.count_alleles()` method counts the RNA-Seq reads supporing the target to check the expression::
     
     cnt = valn.count_alleles()
     print(cnt)  
