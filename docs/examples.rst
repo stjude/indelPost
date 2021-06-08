@@ -28,24 +28,24 @@ Using del2 (bottom) as example, query the COSMIC VCF database::
     
 Normalization query (default) returns VCF entries that are identical after normalization::
     
-    norm_hits = v.query_vcf(cosmic) # list of hit VCF entries (del1 and del2)
+    norm_hits = v.query_vcf(cosmic) # list of 2 hit VCF entries (del1 and del2)
     
     for hit in norm_hits:
         print(hit["INFO"]["CNT"]) 
         
-    #COSMIC count for del1
-    #COSMIC count for del2  
+        #COSMIC count for del1
+        #COSMIC count for del2  
 
 Locus query returns VCF entries located at the normalized genomic locus::
 
-    locus_hits = v.query_vcf(cosmic, matchby="locus") # list of hit VCF entries (all 5 indels)
+    locus_hits = v.query_vcf(cosmic, matchby="locus") # list of 5 hit VCF entries (all indels)
 
     for hit in locus_hits:
         print(hit["INFO"]["CNT"]) 
         
-    #COSMIC count for del1
-    ...
-    #COSMIC count for ins3
+        #COSMIC count for del1
+        ...
+        #COSMIC count for ins3
 
 Exact query only returns a VCF entry matching without normalization:: 
         
