@@ -6,33 +6,33 @@ from Cython.Distutils import build_ext
 from pysam import get_include as pysam_get_include
 
 
-#def pip_install(pkg_name):
-#    import subprocess
-#
-#    subprocess.check_call(
-#        ["python", "-m", "pip", "install", pkg_name], stdout=subprocess.DEVNULL
-#    )
-#
-#
-#try:
-#    from Cython.Build import cythonize
-#    from Cython.Distutils import build_ext
-#except ImportError:
-#    pip_install("cython")
-#
-#    from Cython.Build import cythonize
-#    from Cython.Distutils import build_ext
-#
-#try:
-#    from pysam import get_include as pysam_get_include
-#except ImportError:
-#    pip_install("pysam")
-#    from pysam import get_include as pysam_get_include
-#
-#try:
-#    import numpy
-#except ImportError:
-#    pip_install("numpy")
+def pip_install(pkg_name):
+    import subprocess
+
+    subprocess.check_call(
+        ["python", "-m", "pip", "install", pkg_name], stdout=subprocess.DEVNULL
+    )
+
+
+try:
+    from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+except ImportError:
+    pip_install("cython")
+
+    from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+
+try:
+    from pysam import get_include as pysam_get_include
+except ImportError:
+    pip_install("pysam")
+    from pysam import get_include as pysam_get_include
+
+try:
+    import numpy
+except ImportError:
+    pip_install("numpy")
 
 
 extensions = [
