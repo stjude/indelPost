@@ -4,4 +4,9 @@
 
 indelPost is a Python library for indel processing via realignment and read-based phasing to resolve alignment ambiguities. Details are available [here](https://indelpost.readthedocs.io/en/latest/#).
 
- 
+
+To install: 
+
+```
+pip install indelpost
+``` 

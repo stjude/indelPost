@@ -2,7 +2,7 @@ Introduction
 ============
 
 Small insertions/deletions (indels < 50 bp) can be represented differently between mappers and variant callers, or in the flanking sequence context. 
-indelPost harmonizes these inter-mapper, inter-caller, and inter-read alignment ambiguities via realignment and phasing to facilitate indel processing.
+indelPost harmonizes these inter-mapper, inter-caller, and inter-read alignment ambiguities via realignment and read-based phasing to facilitate indel processing.
 
 As an example, consider an inter-mapper ambiguity problem in DNA/RNA mappings.
 Suppose that you want to test the expression of the DNA indels:

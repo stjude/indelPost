@@ -142,7 +142,7 @@ Annotate complex indels for the table::
 
 Integrating indel call sets
 -----------------------------------
-Given the data represented by the pileup below, two variant callers reported different sets of indels. These can be integrated with indelpost.
+Given the data represented by the pileup below, two variant callers reported different sets of indels. These can be integrated with indelPost.
 
 .. image:: pileup.svg
    :width: 600
