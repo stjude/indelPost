@@ -1,11 +1,6 @@
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 
-from Cython.Build import cythonize
-from Cython.Distutils import build_ext
-from pysam import get_include as pysam_get_include
-
-
 def pip_install(pkg_name):
     import subprocess
 
