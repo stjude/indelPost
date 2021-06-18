@@ -221,12 +221,17 @@ cdef class Variant:
         cdef Variant i, j
         i, j = self.normalize(), other.normalize()
 
-        equivalent = (
-            i._chrom.replace("chr", "") == j._chrom.replace("chr", "")
-            and i.pos == j.pos
-            and j.ref.upper() == i.ref.upper()
-            and i.alt.upper() == j.alt.upper()
-        )
+        try:
+            equivalent = (
+                i._chrom.replace("chr", "") == j._chrom.replace("chr", "")
+                and i.pos == j.pos
+                and j.ref.upper() == i.ref.upper()
+                and i.alt.upper() == j.alt.upper()
+            )
+        except: 
+            print(self.chrom, self.pos, self.ref, self.alt)
+            print(other.chrom, other.pos, other.ref, other.alt)
+            return False
 
         return equivalent
 
@@ -283,7 +288,7 @@ cdef class Variant:
         else:
             i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
         
-        condition_1 = i.ref[-1].upper() == i.alt[-1].upper()
+        condition_1 = i.ref[-1].upper() == i.alt[-1].upper() != "N" 
         while condition_1:
             
             try:
@@ -295,7 +300,8 @@ cdef class Variant:
             i.ref = left_base + i.ref[:-1]
             i.alt = left_base + i.alt[:-1]
             i.pos -= 1
-            condition_1 = i.ref[-1].upper() == i.alt[-1].upper()
+            
+            condition_1 = i.ref[-1].upper() == i.alt[-1].upper() != "N"
 
         condition_2 = i.ref[0].upper() == i.alt[0].upper()
         condition_3 = len(i.ref) > 1 and len(i.alt) > 1

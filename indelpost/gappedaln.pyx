@@ -253,9 +253,6 @@ def seek_larger_gapped_aln(
 ):
 
     read, center_score = get_most_centered_read(target, pileup)
-    
-    #soft_pos = [read["aln_end"] for read in pileup if read["is_target"]]
-    #print(soft_pos)
      
     if not read:
         return target, gap_extension_penalty
