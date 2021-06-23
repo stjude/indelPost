@@ -8,5 +8,6 @@ To install (require Linux with Python>=3.6 pre-installed):
 ```
 pip install indelpost
 ```
-#### [Documentation](https://indelpost.readthedocs.io/en/latest)
+
+Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
 
