@@ -106,6 +106,63 @@ Tune parameters to obtain a different decomposition::
 
 |
 
+
+Counting/Fetching indel-supporting reads
+----------------------------------------
+
+.. image:: reads.svg
+   :width: 400
+   :height: 40
+   :align: center
+
+|
+
+Set up to analyze the pileup above::
+    
+    import pysam
+    from indelpost import Variant, VariantAlignment
+
+    reference = pysam.FastaFile("/path/to/reference.fa")
+    bam = pysam.AlignmentFile("/path/to/thispileup.bam")
+
+    v = Variant("chrN", 123, "CA", "C", reference)
+    valn = VariantAlignment(v, bam)
+
+Count reads::
+
+    cnt = valn.count_alleles()
+    print(cnt)
+    #(4, 4) as (non-target, target)
+
+    # forward and reverse 
+    fw_rv_cnt = valn.count_alleles(fwrv=True)
+    print(fw_rv_cnt)
+    #((1, 3), (3, 1)) as ((non-target_fw, non-target_rv), (target_fw, target_rv)) 
+
+    # count by fragment
+    f_cnt = valn.count_alleles(by_fragment=True)
+    print(f_cnt)
+    #(4, 3)
+    #non-supporting fragments = C, D, F, G
+    #supporting fragments = A, B, D
+    
+
+Fetch reads as a list of `pysam's AlignedSegment <https://pysam.readthedocs.io/en/latest/api.html#pysam.AlignedSegment>`__::
+    
+    supporting_reads = valn.fetch_reads()
+
+    non-supporting_reads = valn.fetch_reads(how="non_target")
+
+    both = valn.fetch_reads(how="covering")
+
+    for read in supporting_reads:
+        print(read.mapping_quality)
+        
+        # 60
+        # 37
+        ...
+    
+
 Annotating complex indels from simple indels
 -------------------------------------------------------
 Complex indel representations can be obtained from a variant caller output with simple alleles.

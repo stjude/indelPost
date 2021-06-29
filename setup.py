@@ -73,7 +73,7 @@ with open("indelpost/version.py") as ver:
 setup(
     name="indelpost",
     version=version["__version__"],
-    description="python library for indel",
+    description="Python library for simple and complex indels",
     url="https://github.com/stjude/indelpost",
     author="Kohei Hagiwara",
     author_email="kohei.hagiwara@stjude.org",
