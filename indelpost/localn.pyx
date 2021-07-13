@@ -196,7 +196,7 @@ def is_target_by_ssw(
     # already found
     if read["is_target"]:
         return read
-
+    
     if read["is_reference_seq"] or read["mapq"] <= mapq_lim or not is_worth_realn(read):
         read["is_target"] = False
         return read

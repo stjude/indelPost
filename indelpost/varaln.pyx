@@ -74,7 +74,7 @@ cdef class VariantAlignment:
     match_score : integer
         score (default 3) for matched bases in Smith-Waterman local alignment.
 
-    mismatch_penaly : interger
+    mismatch_penalty : interger
         penalty (default 2) for mismatched bases in Smith-Waterman local alignment.
     
     gap_open_penalty : integer
@@ -355,7 +355,7 @@ cdef class VariantAlignment:
 
                else:
                   pileup = target + nontarget    
-                    
+            
             pileup = find_by_softclip_split(self.__target, contig, pileup)
             
             pileup = find_by_smith_waterman_realn(
@@ -893,11 +893,11 @@ def generate_grid (auto_adjust_extension_penalty,
         if (gap_open_penalty, gap_extension_penalty) != (3, 1):
             if len(target.indel_seq) < 20:
                 grid = [(gap_open_penalty, gap_extension_penalty),  
-                            (3, 0), (4, 0), (5, 0), (3, 1), (4, 1), (5, 1)
+                            (3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (4, 0)
                        ]
             else:
                 grid = [(gap_open_penalty, gap_extension_penalty),
-                            (3, 1), (3, 0), (5, 1), (5, 0), (4, 1), (5, 1)
+                            (3, 0), (3, 1), (5, 1), (5, 0), (4, 1), (4, 0)
                        ]
         else:
             if len(target.indel_seq) < 20:

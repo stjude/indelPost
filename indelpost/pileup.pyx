@@ -630,7 +630,22 @@ def retarget(
     
     
     if not candidates:
-        return None
+        if target.is_ins and window > 3:
+            window = int(window/3)
+            return retarget(
+                        target, 
+                        pileup, 
+                        window, 
+                        mapq4retarget,
+                        within,
+                        retargetcutoff,
+                        match_score,
+                        mismatch_penalty,
+                        gap_open_penalty,
+                        gap_extension_penalty,
+                   )
+        else:
+            return None
     elif len(target.indel_seq) <= 3 and not target in candidates:
         return None
     
@@ -656,6 +671,7 @@ def retarget(
             except:
                 hit.pos = hit.pos - len(hit.ref)
                 idx2 = candidates.index(hit)
+            
             candidate = candidates[idx2]
             idx = [i for i, var in enumerate(candidates) if var == candidate]
             
@@ -678,6 +694,23 @@ def retarget(
             candidate_aligners = [candidate_aligners[i] for i in idx]
 
             return candidate, candidate_reads, match_score, candidate_ref_seqs, candidate_ref_starts, candidate_aligners
+        else:
+            return None
+    else:
+        if target.is_ins and window > 3:
+            window = int(window/3)
+            return retarget(
+                        target, 
+                        pileup, 
+                        window, 
+                        mapq4retarget,
+                        within,
+                        retargetcutoff,
+                        match_score,
+                        mismatch_penalty,
+                        gap_open_penalty,
+                        gap_extension_penalty,
+                    )
         else:
             return None
 

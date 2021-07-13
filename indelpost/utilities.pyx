@@ -572,7 +572,7 @@ cpdef tuple get_local_reference(
                 left_len = len(local_reference) - (rt_end - pos)
                 first_pass = True
 
-    else:   
+    else:
         local_reference = reference.fetch(chrom, max(0, pos - window * 3), min(pos + window * 3, ref_len))
         left_len = pos - max(0, pos - window * 3)
     

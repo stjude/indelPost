@@ -202,11 +202,10 @@ cdef class Contig:
         qc_stats["low_consensus_rate"] = (low_consensus_rate_lt * lt_len + low_consensus_rate_rt * rt_len) / (lt_len + rt_len)
         
         self.qc_stats = qc_stats
-
         if qc_stats["low_qual_base_frac"] > 0.2:
             return False
-        elif qc_stats["clip_rate"] > 0.1:
-            return False
+        #elif qc_stats["clip_rate"] > 0.1: #abolish clip rate filter
+        #    return False
         elif qc_stats["n_rate"] > 0.1:
             return False
         elif low_consensus_rate_lt > 0.2 or low_consensus_rate_rt > 0.2:
