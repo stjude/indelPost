@@ -581,8 +581,8 @@ cdef class Variant:
         
         window = 100
         mut_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos) + var.alt + self.reference.fetch(var.chrom, rt_pos, rt_pos + window)
-        ref_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos + window)
-
+        ref_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos + len(var.ref) + window)
+        
         aln = align(make_aligner(ref_seq, match_score, mismatch_penalty), mut_seq, gap_open_penalty, gap_extension_penalty) 
         
         genome_aln_pos = lt_pos + 1 - window + aln.reference_start

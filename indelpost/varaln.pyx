@@ -109,7 +109,7 @@ cdef class VariantAlignment:
         if not target.is_non_complex_indel() and target.is_indel:
             
             if auto_adjust_extension_penalty:
-                decomposed_variants = target.decompose_complex_variant()
+                decomposed_variants = target.decompose_complex_variant(match_score, mismatch_penalty)
             else:
                 decomposed_variants = target.decompose_complex_variant(match_score, mismatch_penalty, gap_open_penalty, gap_extension_penalty)
             
