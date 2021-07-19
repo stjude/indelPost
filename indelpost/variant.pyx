@@ -229,8 +229,6 @@ cdef class Variant:
                 and i.alt.upper() == j.alt.upper()
             )
         except: 
-            print(self.chrom, self.pos, self.ref, self.alt)
-            print(other.chrom, other.pos, other.ref, other.alt)
             return False
 
         return equivalent
