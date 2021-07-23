@@ -2,7 +2,13 @@
 
 [![Documentation Status](https://readthedocs.org/projects/indelpost/badge/?version=latest)](https://indelpost.readthedocs.io/en/latest/?badge=latest)
 
-indelPost is a Python library for indel processing via realignment and read-based phasing to resolve alignment ambiguities.
+indelPost is a Python library for indel processing via realignment and read-based phasing to resolve alignment ambiguities. By importing the library, 
+users write their own scripts to solve alignment-sensitive problems such as:
+* compare/integrate indels called differently by variant callers (e.g., complex indels)
+* compare indel alignments in multiple mappings (e.g., match DNA indels to RNA-Seq for expression check)  
+* construct complex indel from single indel
+* extract reads supporting the target indel from BAM file
+* pull variant records matching the target indel from VCF file
 
 To install (require Linux with Python>=3.6 pre-installed):
 ```
