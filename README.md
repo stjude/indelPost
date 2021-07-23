@@ -6,7 +6,7 @@ indelPost is a Python library for indel processing via realignment and read-base
 users write their own scripts to solve alignment-sensitive problems such as:
 * compare/integrate indels called differently by variant callers (e.g., complex indels)
 * compare indel alignments in multiple mappings (e.g., match DNA indels to RNA-Seq for expression check)  
-* construct complex indel from single indel
+* construct a complex indel from a simple indel by checking the alignment in BAM file.    
 * extract reads supporting the target indel from BAM file
 * pull variant records matching the target indel from VCF file
 
