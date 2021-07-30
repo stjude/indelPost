@@ -181,13 +181,13 @@ Annotate complex indels for the table::
     from indelpost import Variant, VariantAlignment
 
     reference = pysam.FastaFile("/path/to/reference.fa")
-    bam = pyasm.AlignmetnFile("/path/to/bam_used_for_variant_calling.bam")
+    bam = pysam.AlignmentFile("/path/to/bam_used_for_variant_calling.bam")
 
     def annot_complex_indel(row):
         v = Variant(row["CHROM"], row["POS"], row["REF"], row["ALT"], reference)
         valn = VariantAlignment(v, bam)
         
-        v_cplx = v.phase(how="complex") # v_cplx may be simple 
+        v_cplx = v.phase(how="complex") # v_cplx will be v if v is not a part of complex event
 
         return v_cplx.pos, v_cplx.ref. v_cplx.alt
         
