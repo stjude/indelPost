@@ -63,7 +63,7 @@ Or, the indel may be soft-clipped (lowercase) as by mapper C::
     # as long as reads contain enough target indel sequence
     aln_c = VariantAlignment(v_in_a, bam_c)
     
-    # all internally represent C>GTCG at position 6
+    # True. all internally represent C>GTCG at position 6
     aln_a == aln_b == aln_c 
 
 Despite the equality, the :class:`~indelpost.VariantAlignment` objects may return different values::
@@ -72,8 +72,9 @@ Despite the equality, the :class:`~indelpost.VariantAlignment` objects may retur
     dna_cnt = aln_a.count_alleles()
     rna_cnt = aln_c.count_alleles()
     
-    print(dna_cnt, rna_cnt)
-    # (10, 17), (168, 103)
+    # False, generally 
+    dna_cnt == rna_cnt
+    
 
 
 Querying VCF file
