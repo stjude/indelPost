@@ -5,7 +5,7 @@ Examples
 
 Equalities
 ----------
-Equality holds for :class:`~indelpost.Variant` objects that are identical when normalized.
+Equality holds for :class:`~indelpost.Variant` objects that are identical in the normalized form.
 
 .. image:: equal_variants.svg
     :width: 600
@@ -33,9 +33,6 @@ Equality holds for :class:`~indelpost.Variant` objects that are identical when n
 
 For example, when mappers A and B align the same indel differently::
     
-    import pysam
-    reference = pysam.FastaFile("/path/to/ref.fa")
-
     bam_a = pysam.AlignmentFile("/path/to/mapper_a.bam")
     bam_b = pysam.AlignmentFile("/path/to/mapper_b.bam")
     
@@ -50,20 +47,19 @@ For example, when mappers A and B align the same indel differently::
 
 The equality bewteen :class:`~indelpost.VariantAlignment` objects is equivalent to::
 
-    va = aln_a.phase()
-    vb = aln_b.phase()
+    v_in_a_phased = aln_a.phase()
+    v_in_b_phased = aln_b.phase()
     
-    # True. va and vb are Variant("N", 6, "C", "GTCG", reference)
-    va == vb 
+    # True. both represent Variant("N", 6, "C", "GTCG", reference)
+    v_in_a_phased == v_in_b_phased 
 
 Or, the indel may be soft-clipped (lowercase) as by mapper C::
     
     bam_c = pysam.AlignmentFile("/path/to/mapper_c.bam")
     
-    # as long as reads contain enough target indel sequence
     aln_c = VariantAlignment(v_in_a, bam_c)
     
-    # True. all internally represent C>GTCG at position 6
+    # True
     aln_a == aln_b == aln_c 
 
 Despite the equality, the :class:`~indelpost.VariantAlignment` objects may return different values::
