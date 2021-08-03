@@ -3,6 +3,79 @@
 Examples
 =========
 
+Equalities
+----------
+Equality holds for :class:`~indelpost.Variant` objects that are identical when normalized.
+
+.. image:: equal_variants.svg
+    :width: 600
+    :height: 50
+    :align: center
+
+|
+
+::
+    
+    v1 = Variant("chrN", 3, "C","CTGCCCTACTGCA", reference) 
+    v2 = Variant("chrN", 14, "C", "CATGCCCTACTGC", reference)
+    
+    # True
+    v1 == v2
+     
+:class:`~indelpost.VariantAlignment` objects are identifical if the phased forms are identifcal.
+
+.. image:: equal_alignment.svg
+   :width: 600
+   :height: 20
+   :align: center
+
+|
+
+For example, when mappers A and B align the same indel differently::
+    
+    import pysam
+    reference = pysam.FastaFile("/path/to/ref.fa")
+
+    bam_a = pysam.AlignmentFile("/path/to/mapper_a.bam")
+    bam_b = pysam.AlignmentFile("/path/to/mapper_b.bam")
+    
+    v_in_a = Variant("N", 6, "C", "CG", reference)
+    v_in_b = Variant("N", 5, "A", "AGTC", reference)
+    
+    aln_a = VariantAlignment(v_in_a, bam_a)
+    aln_b = VariantAlignment(v_in_b, bam_b)
+
+    # True
+    aln_a == aln_b 
+
+The equality bewteen :class:`~indelpost.VariantAlignment` objects is equivalent to::
+
+    va = aln_a.phase()
+    vb = aln_b.phase()
+    
+    # True. va and vb are Variant("N", 6, "C", "GTCG", reference)
+    va == vb 
+
+Or, the indel may be soft-clipped (lowercase) as by mapper C::
+    
+    bam_c = pysam.AlignmentFile("/path/to/mapper_c.bam")
+    
+    # as long as reads contain enough target indel sequence
+    aln_c = VariantAlignment(v_in_a, bam_c)
+    
+    # all internally represent C>GTCG at position 6
+    aln_a == aln_b == aln_c 
+
+Despite the equality, the :class:`~indelpost.VariantAlignment` objects may return different values::
+
+    # for example when mapping A is DNA-Seq and mapping C is RNA-Seq   
+    dna_cnt = aln_a.count_alleles()
+    rna_cnt = aln_c.count_alleles()
+    
+    print(dna_cnt, rna_cnt)
+    # (10, 17), (168, 103)
+
+
 Querying VCF file
 -----------------
 Below are *NF1* tumor suppressor gene indels regsitered in `COSMIC(v89) <https://cancer.sanger.ac.uk/cosmic>`__ . 
