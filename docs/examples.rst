@@ -53,7 +53,7 @@ The equality bewteen :class:`~indelpost.VariantAlignment` objects is equivalent 
     # True. both represent Variant("N", 6, "C", "GTCG", reference)
     v_in_a_phased == v_in_b_phased 
 
-Or, the indel may be soft-clipped (lowercase) as by mapper C::
+The target indel may be obscured as in the soft-clipped (lowercase) alignment by mapper C::
     
     bam_c = pysam.AlignmentFile("/path/to/mapper_c.bam")
     
