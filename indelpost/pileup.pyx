@@ -2,8 +2,8 @@ import re
 import random
 cimport cython
 
-#from cpython cimport array
-#import array
+from cpython cimport array
+import array
 
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
@@ -173,9 +173,9 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     
     # base qual check
     read_dict["low_qual_base_num"] = count_lowqual_non_ref_bases(read_seq, ref_seq, read_qual, cigar_list, basequalthresh)
-    
+    read_dict["is_end_dirty"] = is_end_dirty(read_qual, basequalthresh, pos, read_start, read_end, cigar_string)
     read_dict["is_dirty"] = sum(q <= basequalthresh for q in read_qual) / len(read_seq) > 0.15
-    
+        
     insertions, deletions = locate_indels(cigar_string, read_start)
     
     for ins in insertions:
@@ -297,25 +297,26 @@ cdef tuple leftalign_indel_read(
     
     return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
     
-    #unreach
-    #if var.is_leftaligned:
-    #    return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
-    #else:
-    #    pos = var.normalize().pos
-    #    cigar_string = leftalign_cigar(cigar_string, var, read_start)
-    #    return leftalign_indel_read(
-    #        chrom,
-    #        pos,
-    #        indel_len,
-    #        indel_type,
-    #        cigar_string,
-    #        read_start,
-    #        aln_start,
-    #        read_seq,
-    #        ref_seq,
-    #        read_qual,
-    #        reference,
-    #    )
+
+cdef bint is_end_dirty(array.array read_qual, int basequalthresh, int pos, int read_start, int read_end, str cigar_string):
+    cdef int dist_to_left_end = pos - read_start
+    cdef int dist_to_right_end = read_end - pos
+    cdef bint is_lefty
+
+    if dist_to_left_end < 0:
+        is_lefty = True
+    elif dist_to_right_end < 0:
+        is_lefty = False
+    else:
+        is_lefty = (dist_to_left_end <= dist_to_right_end)
+
+    if cigar_string.count("N") > 1:
+        return False
+    else:
+        if is_lefty:
+            return min(read_qual[: 3]) < basequalthresh 
+        else:
+            return min(read_qual[-3 :]) < basequalthresh
 
 
 cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
@@ -472,6 +473,7 @@ def filter_spurious_overhangs(
         if not read["is_reference_seq"]
         and is_non_spurious_overhang(
             read,
+            target,
             intron,
             genome_aligner,
             junctional_aligner,
@@ -487,6 +489,7 @@ def filter_spurious_overhangs(
 
 def is_non_spurious_overhang(
     read,
+    target,
     intron,
     genome_aligner,
     junction_aligner,
@@ -531,7 +534,7 @@ def is_non_spurious_overhang(
         return True
 
     read = findall_mismatches(read)
-    return is_worth_realn(read)
+    return is_worth_realn(read, target)
 
 
 def retarget(
@@ -574,6 +577,7 @@ def retarget(
         in non_refs 
         if read_dict["low_qual_base_num"] < 6
         and not read_dict["is_dirty"]
+        and not read_dict["is_end_dirty"]
     ]
 
     if not non_refs:
@@ -620,13 +624,23 @@ def retarget(
                         alt = indel["lt_ref"][-1]
                         ref = alt + indel["del_seq"]
                 
-                candidates.append(
-                    Variant(target.chrom, indel["pos"], ref, alt, target.reference)
-                )
-                candidate_reads.append(read)
-                candidate_ref_seqs.append(ref_seq)
-                candidate_ref_starts.append(ref_start)
-                candidate_aligners.append(aligner)
+                var = Variant(target.chrom, indel["pos"], ref, alt, target.reference)
+                
+                # non-target indel found in read end -> do not consider
+                read_end_thresh = len(read["read_seq"]) / 10
+                if var.pos - read["read_start"] <= read_end_thresh or read["read_end"] - var.pos <= read_end_thresh:
+                    if var == target:
+                        candidates.append(var)
+                        candidate_reads.append(read)
+                        candidate_ref_seqs.append(ref_seq)
+                        candidate_ref_starts.append(ref_start)
+                        candidate_aligners.append(aligner)
+                else:
+                    candidates.append(var)
+                    candidate_reads.append(read)
+                    candidate_ref_seqs.append(ref_seq)
+                    candidate_ref_starts.append(ref_start)
+                    candidate_aligners.append(aligner)
     
     
     if not candidates:
