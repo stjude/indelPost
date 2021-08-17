@@ -469,7 +469,7 @@ cdef class VariantAlignment:
             
 
     def count_alleles(
-        self, fwrv=False, by_fragment=False, estimated_count=False, quality_window=None, quality_threshold=None
+        self, fwrv=False, by_fragment=False, estimated_count=True, quality_window=None, quality_threshold=None
     ):
         """returns a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ of
         read counts:  (#ref reads, #alt reads).
