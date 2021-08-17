@@ -223,7 +223,7 @@ Fetch reads as a list of `pysam's AlignedSegment <https://pysam.readthedocs.io/e
 
     non-supporting_reads = valn.fetch_reads(how="non_target")
 
-    both = valn.fetch_reads(how="covering")
+    reads_covering_the_locus = valn.fetch_reads(how="covering")
 
     for read in supporting_reads:
         print(read.mapping_quality)
