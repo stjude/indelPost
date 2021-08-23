@@ -170,12 +170,12 @@ def repeat_counter(query_seq, flank_seq):
     """
     qlen, flen = len(query_seq), len(flank_seq)
     count = 0 
-
+    
     if flen < qlen:
         return count
     
     for i in range(0, flen, qlen):
-        if flank_seq[i : i + qlen] == query_seq:
+        if flank_seq[i  : i + qlen] == query_seq:
             count += 1
         else:
             break

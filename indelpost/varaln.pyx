@@ -356,7 +356,8 @@ cdef class VariantAlignment:
                else:
                   pileup = target + nontarget    
             
-            pileup = find_by_softclip_split(self.__target, contig, pileup)
+            if self.__target.count_repeats() == 0:
+                pileup = find_by_softclip_split(self.__target, contig, pileup)
             
             pileup = find_by_smith_waterman_realn(
                 self.__target,
@@ -459,9 +460,12 @@ cdef class VariantAlignment:
         if how == "target":
             return [read["read"] for read in self.__pileup if read["is_target"]]
         elif how == "non_target":
-            pos, indel_len = self.target.pos, len(self.target.indel_seq)
-            margin = min(indel_len / 2, 5) if indel_len > 3 else indel_len
-            return [read["read"] for read in self.__pileup if count_as_non_target(read, pos, margin)]
+            pos, indel_len = self._observed_pos, len(self.target.indel_seq)
+            r_pos = max(v.pos for v in self.target.generate_equivalents())
+            margin = r_pos - pos
+            del_len = indel_len if self.target.is_del else 0
+            targets = [read["read_name"] for read in self.__pileup if read["is_target"]]   
+            return [read["read"] for read in self.__pileup if count_as_non_target(read, pos, del_len, margin) and not read["read_name"] in targets]
         elif how == "covering":
             return [read["read"] for read in self.__pileup if read["is_covering"]]
         else:
@@ -469,7 +473,7 @@ cdef class VariantAlignment:
             
 
     def count_alleles(
-        self, fwrv=False, by_fragment=False, estimated_count=True, quality_window=None, quality_threshold=None
+        self, fwrv=False, by_fragment=False, estimated_count=False, quality_window=None, quality_threshold=None
     ):
         """returns a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ of
         read counts:  (#ref reads, #alt reads).
@@ -492,8 +496,13 @@ cdef class VariantAlignment:
         cdef dict read
         
         pos, indel_len = self._observed_pos, len(self.target.indel_seq)
-        margin = min(indel_len / 2, 5) if indel_len > 3 else indel_len
 
+        r_pos = max(v.pos for v in self.target.generate_equivalents())
+        
+        margin = r_pos - pos 
+        
+        del_len = indel_len if self.target.is_del else 0
+        
         reads = self.__pileup
         if quality_window and quality_threshold:
             reads = [
@@ -516,12 +525,12 @@ cdef class VariantAlignment:
         fw_non_target = [
             read["read_name"]
             for read in reads
-            if count_as_non_target(read, pos, margin) and not read["is_reverse"]
+            if count_as_non_target(read, pos, del_len, margin) and not read["is_reverse"]
         ]
         rv_non_target = [
             read["read_name"]
             for read in reads
-            if count_as_non_target(read, pos, margin) and read["is_reverse"]
+            if count_as_non_target(read, pos, del_len, margin) and read["is_reverse"]
         ]
         
         fw_target = set(fw_target)
@@ -563,7 +572,7 @@ cdef class VariantAlignment:
         how="local",
         local_threshold=20,
         longest_common_substring_threshold=15,
-        indel_repeat_threshold=10,
+        indel_repeat_threshold=None,
         mutation_density_threshold=0.05,
     ):
         """returns a :class:`~indelpost.Variant` object represeting a phased target indel. 
@@ -584,7 +593,7 @@ cdef class VariantAlignment:
         longest_common_substring_threshold : integer
             removes common substrings between the reference and contig assembled from target reads that are longer than longest_common_substring_threshold (default 15). 
         indel_repeat_threshold : integer
-            do not phase indels that repeat more than indel_repeat_threshold (default 10)
+            do not phase indels that repeat more than indel_repeat_threshold (default None)
         mutation_density_threshold : float
             do not phase if the pileup contains too many mutations (possibly error-prone dirty region). 
             In non-target reads, #non-ref bases/#all bases > mutation_density_threshold (default 0.05)
@@ -598,6 +607,9 @@ cdef class VariantAlignment:
         else:
             raise Exception("phasing stragety must be either of local, greedy, complex")
         
+        if indel_repeat_threshold is None:
+            indel_repeat_threshold = np.inf
+
         return phase_nearby_variants(
             self.__target,
             self.contig,
@@ -633,16 +645,33 @@ def is_quality_read(read, pos, qualitywindow, qualitythresh):
         return lt_median > qualitythresh and rt_median > qualitythresh
 
 
-cdef bint count_as_non_target(dict read, int pos, int margin):
-    if read["is_target"] or not read["is_covering"]:
+cdef bint count_as_non_target(dict read, int pos, int del_len, int margin):
+    if read["is_target"]:
         return False
-    else:
-        margin = 0 if read["is_spliced"] else margin
-        covering_subread = read["covering_subread"]
-        
-        if covering_subread[0] + margin <= pos <= covering_subread[1] - margin:
-            return True
 
+    cdef int aln_start = read["aln_start"]
+    cdef int aln_end = read["aln_end"]
+    
+     
+    # undetermined reads
+    if read["is_covering"]:
+        covering_subread = read["covering_subread"]
+        if covering_subread[1] <= pos + margin:
+            return False
+
+        if pos < aln_start or aln_end < pos:
+            return False
+    else:
+        if aln_end < pos:
+            return False
+        
+        if del_len:
+            if pos + del_len < aln_start:
+                return False
+        else:
+            return False 
+    
+    return True
 
 def centrality(read, target_pos):
     relative_pos = relative_aln_pos(read["ref_seq"], read["cigar_list"], read["aln_start"], target_pos)

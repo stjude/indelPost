@@ -549,7 +549,7 @@ def retarget(
     gap_open_penalty,
     gap_extension_penalty,
 ):
-    target_seq, target_type = target.indel_seq, target.variant_type
+    target_seq, target_type, target_pos  = target.indel_seq, target.variant_type, target.pos
 
     non_refs = [
         read_dict
@@ -559,11 +559,16 @@ def retarget(
         and read_dict["mapq"] > mapq4retarget
     ]
     
+    
     if not non_refs:
         return None
 
-    cutoff = 1.0 if len(target.indel_seq) < 3 else retargetcutoff
-    
+    # cutoff auto_adjustment
+    if len(target.indel_seq) < 3:
+        cutoff = 1.0
+    else:
+        cutoff = retargetcutoff  
+
     #best_matches = None
     # check by realn if no gapped alignments or no good gapped alignmetns
     #if not candidates or not best_matches:
@@ -594,15 +599,15 @@ def retarget(
         ref_alns.append(align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty))
         ref_starts.append(target.pos + 1 - lt_len)
         
+    complex_flags = []
     candidates, candidate_reads, candidate_ref_seqs, candidate_ref_starts, candidate_aligners = [], [], [], [], []
     for read, aln, ref_seq, ref_start, aligner in zip(non_refs, ref_alns, ref_seqs, ref_starts, aligners):
         genome_aln_pos = ref_start + aln.reference_start
         
         gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
             
-        if gap_cnt < 6:
+        if 0 < gap_cnt < 6:
             indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
-            
             positions = [d["pos"] for d in indels]
             complex_positions = set([p for p in positions if positions.count(p) == 2])
             
@@ -610,6 +615,12 @@ def retarget(
                 indel for indel in indels if indel["indel_type"] == target_type
             ]
             
+            # check for possible complex case
+            if complex_positions:
+                complex_flags.append(1)
+            else:
+                pass
+                 
             for indel in target_type_indels:
                 if indel["pos"] in complex_positions:
                     complex_del = [jndel for jndel in indels if jndel["pos"] == indel["pos"] and jndel["indel_type"] == "D"][0]
@@ -627,9 +638,9 @@ def retarget(
                 var = Variant(target.chrom, indel["pos"], ref, alt, target.reference)
                 
                 # non-target indel found in read end -> do not consider
-                read_end_thresh = len(read["read_seq"]) / 10
+                read_end_thresh = len(read["read_seq"]) / 30
                 if var.pos - read["read_start"] <= read_end_thresh or read["read_end"] - var.pos <= read_end_thresh:
-                    if var == target:
+                    if var == target or var.pos not in complex_positions:
                         candidates.append(var)
                         candidate_reads.append(read)
                         candidate_ref_seqs.append(ref_seq)
@@ -642,8 +653,8 @@ def retarget(
                     candidate_ref_starts.append(ref_start)
                     candidate_aligners.append(aligner)
     
-    
     if not candidates:
+        # long reference may align ins as del
         if target.is_ins and window > 3:
             window = int(window/3)
             return retarget(
@@ -660,9 +671,10 @@ def retarget(
                    )
         else:
             return None
-    elif len(target.indel_seq) <= 3 and not target in candidates:
-        return None
-    
+    elif len(target.indel_seq) <= 3:
+        if not sum(complex_flags) and target not in candidates:
+            return None
+     
     u_candidates = to_flat_list([var._generate_equivalents_private() for var in set(candidates)])
     u_candidates.sort(key=lambda x: abs(x.pos - target.pos))
     candidate_seqs = [var._get_indel_seq(how=target_type) for var in u_candidates]

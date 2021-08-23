@@ -26,18 +26,6 @@ def phase_nearby_variants(
     if contig.failed:
         return NullVariant(target.chrom, target.pos, target.reference)
     
-    # QC check #consider abolish QC check
-    #pileup_mapq_low_20 = np.percentile([read["mapq"] for read in pileup], 20)
-    #if contig.mapq < mapq_thresh or  pileup_mapq_low_20 < mapq_thresh or contig.is_target_right_aligned:
-    #    return None
-    #elif (
-    #      seq_complexity(contig, snv_neighborhood, indel_neighborhood)
-    #      < sequence_complexity_thresh
-    #):
-    #    return None
-    #elif low_qual_fraction(pileup) > low_qual_frac_thresh:
-    #    return None
-     
     indexed_contig = contig.contig_dict
     target_pos_on_contig = contig.lt_end_pos
     
@@ -78,7 +66,6 @@ def phase_nearby_variants(
 
     lt_end = max(lt_loci) if lt_loci else -np.inf
     rt_end = min(rt_loci) if rt_loci else np.inf
-    
     
     remove_deletables(indexed_contig, lt_end, target_pos_on_contig, rt_end)
     
@@ -251,14 +238,6 @@ def locate_mismatch_cluster_peaks(
     lt_peak_pos = target.pos if lt_peak_pos == -np.inf else lt_peak_pos
     rt_peak_pos = target.pos + len(target.ref) - 1 if rt_peak_pos == np.inf else rt_peak_pos
 
-    #if to_complex:
-    #    if is_tight_cluster(mismatches_to_phase, target, snv_neighborhood):
-    #        return (lt_peak_pos - 1, rt_peak_pos + 1)
-    #    else:
-    #        return None
-    #else:
-    #    return (lt_peak_pos - 1, rt_peak_pos + 1)
-    
     return (lt_peak_pos - 1, rt_peak_pos + 1)
 
 
@@ -396,30 +375,6 @@ def is_deletable(variant, deletable_variants, indel_repeat_thresh, to_complex):
     if variant.is_indel:
         if repeats(variant) >= indel_repeat_thresh:
             return True
-
-    # filter by dbsnp -> depreciated
-    #if dbsnp:
-    #    hits = variant.query_vcf(dbsnp, indel_only=False)
-    #    for hit in hits:
-    #
-    #        info = hit["INFO"]
-    #        if info.get("COMMON", False):
-    #            return True
-    #
-    #        if (
-    #            info.get("G5A", False)
-    #            or info.get("G5A", False)
-    #            or info.get("HD", False)
-    #        ):
-    #            return True
-    #
-    #        if info.get("KGPhase1", False) or info.get("KGPhase1", False):
-    #            return True
-    #
-    #        topmedfreq = get_freq(info.get("TOPMED", 0.0))
-    #        caffreq = get_freq(info.get("CAP", 0.0))
-    #        if min(topmedfreq, caffreq) < 0.999:
-    #            return True
 
     return False
 

@@ -445,7 +445,7 @@ def is_compatible(query, subject, indel_type, partial_match=True):
 
     # repeat boundary check (assuming left-aligned bam)
     rt_check = contains_repeat_end(subject_indel, rt_query, subject_rt_flank)
-    if rt_query and subject_rt_flank and not rt_check:
+    if not rt_check:
         return False
 
     # check inserted/deleted sequences for similarity
