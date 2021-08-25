@@ -63,9 +63,17 @@ cdef tuple make_pileup(
     
     ref_len = reference.get_reference_length(chrom)
     
-    pileup = fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates)
-     
-    orig_depth = bam.count(chrom, pos - 1, pos)
+    chroms = bam.references
+    if chrom not in chroms:
+        if chrom.startswith("chr"):
+            _chrom = chrom.replace("chr","")
+        else:
+            _chrom = "chr" + chrom
+    else:
+        _chrom = chrom
+    
+    pileup = fetch_reads(_chrom, pos, bam, ref_len, window, exclude_duplicates)
+    orig_depth = bam.count(_chrom, pos - 1, pos)
     orig_read_num = len(pileup)
       
     # downsampling
@@ -102,6 +110,7 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
     cdef AlignedSegment read
     
     pos = pos - 1  # convert to 0-based
+
     all_reads = bam.fetch(
         chrom, max(0, pos - window), min(pos + 1 + window, ref_len), until_eof=True
     )

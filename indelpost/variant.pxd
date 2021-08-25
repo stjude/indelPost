@@ -11,7 +11,7 @@ cdef class NullVariant:
 
 
 cdef class Variant:
-    cdef public str chrom, ref, alt
+    cdef public str chrom, ref, alt,
     cdef public int pos
     cdef public FastaFile reference
     cdef str _chrom
