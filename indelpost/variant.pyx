@@ -101,15 +101,14 @@ cdef class Variant:
         self.__validate()
      
     def __getstate__(self):
-        return (self.chrom, self._chrom, self.pos, self.ref, self.alt, self.reference.filename) 
+        return (self.chrom, self.pos, self.ref, self.alt, self.reference.filename) 
         
 
     def __setstate__(self, state):        
         self.chrom = state[0]
-        self._chrom = state[1]
-        self.pos = state[2]
-        self.ref = state[3]
-        self.alt = state[4]
+        self.pos = state[1]
+        self.ref = state[2]
+        self.alt = state[3]
         
         self.reference = FastaFile(state[4])
     
