@@ -1,7 +1,6 @@
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 
-
 def pip_install(pkg_name):
     import subprocess
 
@@ -74,7 +73,7 @@ with open("indelpost/version.py") as ver:
 setup(
     name="indelpost",
     version=version["__version__"],
-    description="python library for indel",
+    description="Python library for simple and complex indels",
     url="https://github.com/stjude/indelpost",
     author="Kohei Hagiwara",
     author_email="kohei.hagiwara@stjude.org",
@@ -82,5 +81,5 @@ setup(
     packages=find_packages(exclude=["tests"]),
     cmdclass={"build_ext": build_ext},
     ext_modules=cythonize(extensions, compiler_directives={"language_level": "3"}),
-    install_requires=["ssw-py"],
+    install_requires=["ssw-py", "numpy>=1.16.0", "pysam>=0.15.0", "cython>=0.29.12"],
 )

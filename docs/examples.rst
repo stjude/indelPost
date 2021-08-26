@@ -3,10 +3,80 @@
 Examples
 =========
 
+Equalities
+----------
+Equality holds for :class:`~indelpost.Variant` objects that are identical in the normalized form.
+
+.. image:: equal_variants.svg
+    :width: 600
+    :height: 50
+    :align: center
+
+|
+
+::
+    
+    v1 = Variant("chrN", 3, "C","CTGCCCTACTGCA", reference) 
+    v2 = Variant("chrN", 14, "C", "CATGCCCTACTGC", reference)
+    
+    # True
+    v1 == v2
+     
+:class:`~indelpost.VariantAlignment` objects are identifical if the phased forms are identifcal.
+
+.. image:: equal_alignment.svg
+   :width: 600
+   :height: 20
+   :align: center
+
+|
+
+For example, when mappers A and B align the same indel differently::
+    
+    bam_a = pysam.AlignmentFile("/path/to/mapper_a.bam")
+    bam_b = pysam.AlignmentFile("/path/to/mapper_b.bam")
+    
+    v_in_a = Variant("N", 6, "C", "CG", reference)
+    v_in_b = Variant("N", 5, "A", "AGTC", reference)
+    
+    aln_a = VariantAlignment(v_in_a, bam_a)
+    aln_b = VariantAlignment(v_in_b, bam_b)
+
+    # True
+    aln_a == aln_b 
+
+The equality bewteen :class:`~indelpost.VariantAlignment` objects is equivalent to::
+
+    v_in_a_phased = aln_a.phase()
+    v_in_b_phased = aln_b.phase()
+    
+    # True. both represent Variant("N", 6, "C", "GTCG", reference)
+    v_in_a_phased == v_in_b_phased 
+
+The target indel may be obscured as in the soft-clipped (lowercase) alignment by mapper C::
+    
+    bam_c = pysam.AlignmentFile("/path/to/mapper_c.bam")
+    
+    aln_c = VariantAlignment(v_in_a, bam_c)
+    
+    # True
+    aln_a == aln_b == aln_c 
+
+Despite the equality, the :class:`~indelpost.VariantAlignment` objects may return different values::
+
+    # for example when mapping A is DNA-Seq and mapping C is RNA-Seq   
+    dna_cnt = aln_a.count_alleles()
+    rna_cnt = aln_c.count_alleles()
+    
+    # False, generally 
+    dna_cnt == rna_cnt
+    
+
+
 Querying VCF file
 -----------------
 Below are *NF1* tumor suppressor gene indels regsitered in `COSMIC(v89) <https://cancer.sanger.ac.uk/cosmic>`__ . 
-The VCF entries are juxtaposed with the alignments against GRCh38. 
+For each variant, the VCF allele information is shown on the left with the alignments vs. GRCh38 on the right. 
 
 .. image:: nf1.svg
    :width: 600
@@ -28,25 +98,32 @@ Using del2 (bottom) as example, query the COSMIC VCF database::
     
 Normalization query (default) returns VCF entries that are identical after normalization::
     
-    norm_hits = v.query_vcf(cosmic) 
+    norm_hits = v.query_vcf(cosmic) # list of 2 hit VCF entries (del1 and del2)
     
     for hit in norm_hits:
-        print(hit["INFO"]["CNT"]) #COSMIC counts for del1 and del2 
+        print(hit["INFO"]["CNT"]) 
+        
+        #COSMIC count for del1
+        #COSMIC count for del2  
 
 Locus query returns VCF entries located at the normalized genomic locus::
 
-    locus_hits = v.query_vcf(cosmic, matchby="locus")
+    locus_hits = v.query_vcf(cosmic, matchby="locus") # list of 5 hit VCF entries (all indels)
 
     for hit in locus_hits:
-        print(hit["INFO"]["CNT"]) #COSMIC counts for del1, del2, ins1, ins2, and in3
+        print(hit["INFO"]["CNT"]) 
+        
+        #COSMIC count for del1
+        ...
+        #COSMIC count for ins3
 
 Exact query only returns a VCF entry matching without normalization:: 
         
-    exact_hit = v.query(cosmic, matchby="exact")
+    exact_hit = v.query(cosmic, matchby="exact") # list of a hit VCF entry (del2)
     
-    print(exact_hit[0]["INFO"]["CNT"]) #COSMIC count for del2 only
+    print(exact_hit[0]["INFO"]["CNT"]) 
     
-    
+    #COSMIC count for del2
     
 Decomposing complex indels
 --------------------------
@@ -99,10 +176,67 @@ Tune parameters to obtain a different decomposition::
 
 |
 
+
+Counting/Fetching indel-supporting reads
+----------------------------------------
+
+.. image:: reads.svg
+   :width: 400
+   :height: 40
+   :align: center
+
+|
+
+Set up to analyze the pileup above::
+    
+    import pysam
+    from indelpost import Variant, VariantAlignment
+
+    reference = pysam.FastaFile("/path/to/reference.fa")
+    bam = pysam.AlignmentFile("/path/to/thispileup.bam")
+
+    v = Variant("chrN", 123, "CA", "C", reference)
+    valn = VariantAlignment(v, bam)
+
+Count reads::
+
+    cnt = valn.count_alleles()
+    print(cnt)
+    #(4, 4) as (non-target, target)
+
+    # forward and reverse 
+    fw_rv_cnt = valn.count_alleles(fwrv=True)
+    print(fw_rv_cnt)
+    #((1, 3), (3, 1)) as ((non-target_fw, non-target_rv), (target_fw, target_rv)) 
+
+    # count by fragment
+    f_cnt = valn.count_alleles(by_fragment=True)
+    print(f_cnt)
+    #(4, 3)
+    #non-supporting fragments = C, D, F, G
+    #supporting fragments = A, B, D
+    
+
+Fetch reads as a list of `pysam's AlignedSegment <https://pysam.readthedocs.io/en/latest/api.html#pysam.AlignedSegment>`__::
+    
+    supporting_reads = valn.fetch_reads()
+
+    non-supporting_reads = valn.fetch_reads(how="non_target")
+
+    reads_covering_the_locus = valn.fetch_reads(how="covering")
+
+    for read in supporting_reads:
+        print(read.mapping_quality)
+        
+        # 60
+        # 37
+        ...
+    
+
 Annotating complex indels from simple indels
 -------------------------------------------------------
-Complex indel representaions can be obtained from a variant caller output with simple alleles.
-Suppose the output VCF file is parsed to "simple_indels.tab"::
+Complex indel representations can be obtained from a variant caller output with simple alleles.
+Suppose the output VCF file is parsed to a flat-table "simple_indels.tab"::
 
     CHROM   POS     REF     ALT
     1       123     A       ATC
@@ -117,13 +251,13 @@ Annotate complex indels for the table::
     from indelpost import Variant, VariantAlignment
 
     reference = pysam.FastaFile("/path/to/reference.fa")
-    bam = pyasm.AlignmetnFile("/path/to/bam_used_for_variant_calling.bam")
+    bam = pysam.AlignmentFile("/path/to/bam_used_for_variant_calling.bam")
 
     def annot_complex_indel(row):
         v = Variant(row["CHROM"], row["POS"], row["REF"], row["ALT"], reference)
         valn = VariantAlignment(v, bam)
         
-        v_cplx = v.phase(how="complex") # v_cplx may be simple 
+        v_cplx = v.phase(how="complex") # v_cplx will be v if v is not a part of complex event
 
         return v_cplx.pos, v_cplx.ref. v_cplx.alt
         
@@ -135,8 +269,7 @@ Annotate complex indels for the table::
 
 Integrating indel call sets
 -----------------------------------
-In the pileup, two variant callers reported different sets of indels to integrate.
-
+Given the data represented by the pileup below, two variant callers reported different sets of indels. These can be integrated with indelPost.
 
 .. image:: pileup.svg
    :width: 600
@@ -166,7 +299,7 @@ Prepare phased indel calls::
     v_b3_phased = VariantAlignment(Variant("N", 15, "G", "GA", reference), bam).phase()
 
         
-Use `set <https://docs.python.org/3/tutorial/datastructures.html#sets>`__ to integrate them::
+Integrate them using `set <https://docs.python.org/3/tutorial/datastructures.html#sets>`__ operations::
     
     call_set_A = {v_a1_phased, v_a2_phased, v_a3_phased}
     call_set_B = {v_b1_phased, v_b2_phased, v_b3_phased}

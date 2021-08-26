@@ -2,8 +2,8 @@ import re
 import random
 cimport cython
 
-#from cpython cimport array
-#import array
+from cpython cimport array
+import array
 
 from  functools import partial
 from difflib import get_close_matches, SequenceMatcher
@@ -63,9 +63,17 @@ cdef tuple make_pileup(
     
     ref_len = reference.get_reference_length(chrom)
     
-    pileup = fetch_reads(chrom, pos, bam, ref_len, window, exclude_duplicates)
-     
-    orig_depth = bam.count(chrom, pos - 1, pos)
+    chroms = bam.references
+    if chrom not in chroms:
+        if chrom.startswith("chr"):
+            _chrom = chrom.replace("chr","")
+        else:
+            _chrom = "chr" + chrom
+    else:
+        _chrom = chrom
+    
+    pileup = fetch_reads(_chrom, pos, bam, ref_len, window, exclude_duplicates)
+    orig_depth = bam.count(_chrom, pos - 1, pos)
     orig_read_num = len(pileup)
       
     # downsampling
@@ -102,6 +110,7 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
     cdef AlignedSegment read
     
     pos = pos - 1  # convert to 0-based
+
     all_reads = bam.fetch(
         chrom, max(0, pos - window), min(pos + 1 + window, ref_len), until_eof=True
     )
@@ -173,9 +182,9 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     
     # base qual check
     read_dict["low_qual_base_num"] = count_lowqual_non_ref_bases(read_seq, ref_seq, read_qual, cigar_list, basequalthresh)
-    
+    read_dict["is_end_dirty"] = is_end_dirty(read_qual, basequalthresh, pos, read_start, read_end, cigar_string)
     read_dict["is_dirty"] = sum(q <= basequalthresh for q in read_qual) / len(read_seq) > 0.15
-    
+        
     insertions, deletions = locate_indels(cigar_string, read_start)
     
     for ins in insertions:
@@ -297,25 +306,26 @@ cdef tuple leftalign_indel_read(
     
     return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
     
-    #unreach
-    #if var.is_leftaligned:
-    #    return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
-    #else:
-    #    pos = var.normalize().pos
-    #    cigar_string = leftalign_cigar(cigar_string, var, read_start)
-    #    return leftalign_indel_read(
-    #        chrom,
-    #        pos,
-    #        indel_len,
-    #        indel_type,
-    #        cigar_string,
-    #        read_start,
-    #        aln_start,
-    #        read_seq,
-    #        ref_seq,
-    #        read_qual,
-    #        reference,
-    #    )
+
+cdef bint is_end_dirty(array.array read_qual, int basequalthresh, int pos, int read_start, int read_end, str cigar_string):
+    cdef int dist_to_left_end = pos - read_start
+    cdef int dist_to_right_end = read_end - pos
+    cdef bint is_lefty
+
+    if dist_to_left_end < 0:
+        is_lefty = True
+    elif dist_to_right_end < 0:
+        is_lefty = False
+    else:
+        is_lefty = (dist_to_left_end <= dist_to_right_end)
+
+    if cigar_string.count("N") > 1:
+        return False
+    else:
+        if is_lefty:
+            return min(read_qual[: 3]) < basequalthresh 
+        else:
+            return min(read_qual[-3 :]) < basequalthresh
 
 
 cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
@@ -342,12 +352,18 @@ cdef str leftalign_cigar(str cigarstring, Variant target, int read_start):
 cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, int pos, int rpos):
     spliced_subreads = get_spliced_subreads(cigar_string, read_start, read_end)
 
+    
     is_covering = False
     covering_subread = None
     for subread in spliced_subreads:
-        if subread[0] <= pos <= subread[1] or subread[0] <= rpos <= subread[1]:
+        if subread[0] <= pos <= subread[1]:
             is_covering = True
             covering_subread = tuple(subread)
+        elif subread[0] <= rpos <= subread[1]:
+            is_covering = True
+            covering_subread = tuple(subread)
+            pos = rpos
+
 
     intron_ptrn = (0, 0)
     if len(spliced_subreads) > 1:
@@ -384,7 +400,7 @@ cdef tuple parse_spliced_read(str cigar_string, int read_start, int read_end, in
     else:
         is_spliced = False
         splice_ptrn = ("", "")
-
+    
     return is_covering, covering_subread, is_spliced, splice_ptrn, intron_ptrn
 
 
@@ -466,6 +482,7 @@ def filter_spurious_overhangs(
         if not read["is_reference_seq"]
         and is_non_spurious_overhang(
             read,
+            target,
             intron,
             genome_aligner,
             junctional_aligner,
@@ -481,6 +498,7 @@ def filter_spurious_overhangs(
 
 def is_non_spurious_overhang(
     read,
+    target,
     intron,
     genome_aligner,
     junction_aligner,
@@ -525,7 +543,7 @@ def is_non_spurious_overhang(
         return True
 
     read = findall_mismatches(read)
-    return is_worth_realn(read)
+    return is_worth_realn(read, target)
 
 
 def retarget(
@@ -540,7 +558,7 @@ def retarget(
     gap_open_penalty,
     gap_extension_penalty,
 ):
-    target_seq, target_type = target.indel_seq, target.variant_type
+    target_seq, target_type, target_pos  = target.indel_seq, target.variant_type, target.pos
 
     non_refs = [
         read_dict
@@ -550,11 +568,16 @@ def retarget(
         and read_dict["mapq"] > mapq4retarget
     ]
     
+    
     if not non_refs:
         return None
 
-    cutoff = 1.0 if len(target.indel_seq) < 3 else retargetcutoff
-    
+    # cutoff auto_adjustment
+    if len(target.indel_seq) < 3:
+        cutoff = 1.0
+    else:
+        cutoff = retargetcutoff  
+
     #best_matches = None
     # check by realn if no gapped alignments or no good gapped alignmetns
     #if not candidates or not best_matches:
@@ -568,6 +591,7 @@ def retarget(
         in non_refs 
         if read_dict["low_qual_base_num"] < 6
         and not read_dict["is_dirty"]
+        and not read_dict["is_end_dirty"]
     ]
 
     if not non_refs:
@@ -584,15 +608,15 @@ def retarget(
         ref_alns.append(align(aligner, read["read_seq"], gap_open_penalty, gap_extension_penalty))
         ref_starts.append(target.pos + 1 - lt_len)
         
+    complex_flags = []
     candidates, candidate_reads, candidate_ref_seqs, candidate_ref_starts, candidate_aligners = [], [], [], [], []
     for read, aln, ref_seq, ref_start, aligner in zip(non_refs, ref_alns, ref_seqs, ref_starts, aligners):
         genome_aln_pos = ref_start + aln.reference_start
         
         gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
             
-        if gap_cnt < 6:
+        if 0 < gap_cnt < 6:
             indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
-            
             positions = [d["pos"] for d in indels]
             complex_positions = set([p for p in positions if positions.count(p) == 2])
             
@@ -600,6 +624,12 @@ def retarget(
                 indel for indel in indels if indel["indel_type"] == target_type
             ]
             
+            # check for possible complex case
+            if complex_positions:
+                complex_flags.append(1)
+            else:
+                pass
+                 
             for indel in target_type_indels:
                 if indel["pos"] in complex_positions:
                     complex_del = [jndel for jndel in indels if jndel["pos"] == indel["pos"] and jndel["indel_type"] == "D"][0]
@@ -614,20 +644,46 @@ def retarget(
                         alt = indel["lt_ref"][-1]
                         ref = alt + indel["del_seq"]
                 
-                candidates.append(
-                    Variant(target.chrom, indel["pos"], ref, alt, target.reference)
-                )
-                candidate_reads.append(read)
-                candidate_ref_seqs.append(ref_seq)
-                candidate_ref_starts.append(ref_start)
-                candidate_aligners.append(aligner)
-    
+                var = Variant(target.chrom, indel["pos"], ref, alt, target.reference)
+                
+                # non-target indel found in read end -> do not consider
+                read_end_thresh = len(read["read_seq"]) / 30
+                if var.pos - read["read_start"] <= read_end_thresh or read["read_end"] - var.pos <= read_end_thresh:
+                    if var == target or var.pos not in complex_positions:
+                        candidates.append(var)
+                        candidate_reads.append(read)
+                        candidate_ref_seqs.append(ref_seq)
+                        candidate_ref_starts.append(ref_start)
+                        candidate_aligners.append(aligner)
+                else:
+                    candidates.append(var)
+                    candidate_reads.append(read)
+                    candidate_ref_seqs.append(ref_seq)
+                    candidate_ref_starts.append(ref_start)
+                    candidate_aligners.append(aligner)
     
     if not candidates:
-        return None
-    elif len(target.indel_seq) < 2 and not target in candidates:
-        return None
-    
+        # long reference may align ins as del
+        if target.is_ins and window > 3:
+            window = int(window/3)
+            return retarget(
+                        target, 
+                        pileup, 
+                        window, 
+                        mapq4retarget,
+                        within,
+                        retargetcutoff,
+                        match_score,
+                        mismatch_penalty,
+                        gap_open_penalty,
+                        gap_extension_penalty,
+                   )
+        else:
+            return None
+    elif len(target.indel_seq) <= 3:
+        if not sum(complex_flags) and target not in candidates:
+            return None
+     
     u_candidates = to_flat_list([var._generate_equivalents_private() for var in set(candidates)])
     u_candidates.sort(key=lambda x: abs(x.pos - target.pos))
     candidate_seqs = [var._get_indel_seq(how=target_type) for var in u_candidates]
@@ -650,6 +706,7 @@ def retarget(
             except:
                 hit.pos = hit.pos - len(hit.ref)
                 idx2 = candidates.index(hit)
+            
             candidate = candidates[idx2]
             idx = [i for i, var in enumerate(candidates) if var == candidate]
             
@@ -672,6 +729,23 @@ def retarget(
             candidate_aligners = [candidate_aligners[i] for i in idx]
 
             return candidate, candidate_reads, match_score, candidate_ref_seqs, candidate_ref_starts, candidate_aligners
+        else:
+            return None
+    else:
+        if target.is_ins and window > 3:
+            window = int(window/3)
+            return retarget(
+                        target, 
+                        pileup, 
+                        window, 
+                        mapq4retarget,
+                        within,
+                        retargetcutoff,
+                        match_score,
+                        mismatch_penalty,
+                        gap_open_penalty,
+                        gap_extension_penalty,
+                    )
         else:
             return None
 
@@ -931,6 +1005,7 @@ def update_pileup(
     
     rpos = max(v.pos for v in new_target.generate_equivalents())
     for read in pileup:
+
         (
             is_covering,
             covering_subread,
@@ -940,7 +1015,7 @@ def update_pileup(
         ) = parse_spliced_read(
             read["cigar_string"], read["read_start"], read["read_end"], new_target.pos, rpos
         )
-           
+
         read["is_covering"] = is_covering
         read["covering_subread"] = covering_subread
         read["is_spliced"] = is_spliced

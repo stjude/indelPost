@@ -26,19 +26,8 @@ def phase_nearby_variants(
     if contig.failed:
         return NullVariant(target.chrom, target.pos, target.reference)
     
-    # QC check #consider abolish QC check
-    #pileup_mapq_low_20 = np.percentile([read["mapq"] for read in pileup], 20)
-    #if contig.mapq < mapq_thresh or  pileup_mapq_low_20 < mapq_thresh or contig.is_target_right_aligned:
-    #    return None
-    #elif (
-    #      seq_complexity(contig, snv_neighborhood, indel_neighborhood)
-    #      < sequence_complexity_thresh
-    #):
-    #    return None
-    #elif low_qual_fraction(pileup) > low_qual_frac_thresh:
-    #    return None
-     
     indexed_contig = contig.contig_dict
+    target_pos_on_contig = contig.lt_end_pos
     
     # no phasable variants
     variants_to_phase = contig.mismatches + contig.non_target_indels
@@ -48,10 +37,10 @@ def phase_nearby_variants(
     # phase all phasables within the target exon (hard phasing)
     if hard:
         variants_list = []
-        cleaned, variant_list = precleaning(indexed_contig, variants_list, target.pos, pileup)
+        cleaned, variant_list = precleaning(indexed_contig, variants_list, target_pos_on_contig, pileup, target)
         return greedy_phasing(target, cleaned)
     else: 
-        indexed_contig, variants_to_phase = precleaning(indexed_contig, variants_to_phase, target.pos, pileup)
+        indexed_contig, variants_to_phase = precleaning(indexed_contig, variants_to_phase, target_pos_on_contig, pileup)
     
     if not variants_to_phase:
         return  make_target_obj_from_contig(target, indexed_contig)
@@ -65,9 +54,9 @@ def phase_nearby_variants(
     lt_loci, rt_loci, tmp = [], [], variants_to_phase.copy()
     for var in tmp:
         if is_deletable(var, variants_in_non_targets, indel_repeat_thresh, to_complex):
-            if var.pos < target.pos:
+            if var.pos < target_pos_on_contig:
                 lt_loci.append(var.pos)
-            elif var.pos > target.pos:
+            elif var.pos > target_pos_on_contig:
                 rt_loci.append(var.pos)
             
             variants_to_phase.remove(var)
@@ -78,12 +67,11 @@ def phase_nearby_variants(
     lt_end = max(lt_loci) if lt_loci else -np.inf
     rt_end = min(rt_loci) if rt_loci else np.inf
     
-    
-    remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
+    remove_deletables(indexed_contig, lt_end, target_pos_on_contig, rt_end)
     
     mismatches_to_phase = [var for var in variants_to_phase if not var.is_indel and indexed_contig.get(var.pos, False)]
-    non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel and indexed_contig.get(var.pos, False)]
-
+    non_target_indels_to_phase = [var for var in variants_to_phase if var.is_indel and indexed_contig.get(var.pos, False) and var != target]
+    
     if variants_to_phase:
         if not non_target_indels_to_phase:
             peak_locs = locate_mismatch_cluster_peaks(
@@ -92,7 +80,7 @@ def phase_nearby_variants(
             
             if peak_locs:
                 remove_deletables(
-                    indexed_contig, peak_locs[0], target.pos, peak_locs[1]
+                    indexed_contig, peak_locs[0], target_pos_on_contig, peak_locs[1]
                 )
             else:
                 return make_target_obj_from_contig(target, indexed_contig)
@@ -105,12 +93,12 @@ def phase_nearby_variants(
             if max(target_len, non_target_max_len) < 4:
                 indel_neighborhood = int(indel_neighborhood / 2) + 1
             
-            remove_common_substrings(indexed_contig, target.pos, indel_neighborhood)
+            remove_common_substrings(indexed_contig, target_pos_on_contig, indel_neighborhood)
 
             lt_end = end_point(indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=True)
             rt_end = end_point(indexed_contig, mismatches_to_phase, target, snv_neighborhood, left=False)
             
-            remove_deletables(indexed_contig, lt_end, target.pos, rt_end)
+            remove_deletables(indexed_contig, lt_end, target_pos_on_contig, rt_end)
 
     cvar = greedy_phasing(target, indexed_contig)
     
@@ -132,7 +120,6 @@ def greedy_phasing(target, indexed_contig):
     cpos = 0
     cref = ""
     calt = ""
-    
     for k, v in indexed_contig.items():
         if not cpos:
             cpos = k
@@ -193,9 +180,9 @@ def precleaning(genome_indexed_contig, variants_list, target_pos, pileup, limit_
         if spliced_subreads:
             lt_exon_end = min([subread[0] for subread in spliced_subreads])
             rt_exon_end = max([subread[1] for subread in spliced_subreads])
-            lt_lim = max(lt_lim, lt_exon_end)
-            rt_lim = min(rt_lim, rt_exon_end)
-
+            lt_lim = max(lt_lim, lt_exon_end - 1)
+            rt_lim = min(rt_lim, rt_exon_end + 1)
+        
         tmp = genome_indexed_contig.copy()
         for k, v in genome_indexed_contig.items():
             if k <= lt_lim or rt_lim <= k:
@@ -251,14 +238,6 @@ def locate_mismatch_cluster_peaks(
     lt_peak_pos = target.pos if lt_peak_pos == -np.inf else lt_peak_pos
     rt_peak_pos = target.pos + len(target.ref) - 1 if rt_peak_pos == np.inf else rt_peak_pos
 
-    #if to_complex:
-    #    if is_tight_cluster(mismatches_to_phase, target, snv_neighborhood):
-    #        return (lt_peak_pos - 1, rt_peak_pos + 1)
-    #    else:
-    #        return None
-    #else:
-    #    return (lt_peak_pos - 1, rt_peak_pos + 1)
-    
     return (lt_peak_pos - 1, rt_peak_pos + 1)
 
 
@@ -396,30 +375,6 @@ def is_deletable(variant, deletable_variants, indel_repeat_thresh, to_complex):
     if variant.is_indel:
         if repeats(variant) >= indel_repeat_thresh:
             return True
-
-    # filter by dbsnp -> depreciated
-    #if dbsnp:
-    #    hits = variant.query_vcf(dbsnp, indel_only=False)
-    #    for hit in hits:
-    #
-    #        info = hit["INFO"]
-    #        if info.get("COMMON", False):
-    #            return True
-    #
-    #        if (
-    #            info.get("G5A", False)
-    #            or info.get("G5A", False)
-    #            or info.get("HD", False)
-    #        ):
-    #            return True
-    #
-    #        if info.get("KGPhase1", False) or info.get("KGPhase1", False):
-    #            return True
-    #
-    #        topmedfreq = get_freq(info.get("TOPMED", 0.0))
-    #        caffreq = get_freq(info.get("CAP", 0.0))
-    #        if min(topmedfreq, caffreq) < 0.999:
-    #            return True
 
     return False
 

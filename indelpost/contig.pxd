@@ -10,7 +10,7 @@ cdef class Contig:
     cdef Variant target
     cdef list pileup, targetpileup
     cdef public bint qc_passed, failed
-    cdef int donwsample_lim, lt_end_pos
+    cdef int donwsample_lim
     cdef object lt_genomic_index, rt_genomic_index
     cdef int start, end
     cdef str lt_reference_seq, rt_reference_seq
@@ -24,7 +24,7 @@ cdef class Contig:
     cdef public str lt_target_block_consensus_seq, rt_target_block_consensus_seq
     cdef public list lt_consensus_scores, rt_consensus_scores, mismatches, non_target_indels, gaps
     cdef public list lt_target_block_consensus_scores, rt_target_block_consensus_scores
-    cdef public int mapq
+    cdef public int mapq, lt_end_pos
     cdef public double low_qual_mapping_rate
     cdef public dict qc_stats
     cdef public tuple splice_pattern

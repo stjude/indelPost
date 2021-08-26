@@ -5,7 +5,7 @@ import numpy as np
 from ssw import SSW
 
 from .consensus import is_compatible
-from .utilities import get_mapped_subreads, get_end_pos, make_insertion_first
+from .utilities import get_mapped_subreads, get_end_pos, make_insertion_first, to_minimal_repeat_unit
 
 from indelpost.utilities cimport split, count_lowqual_non_ref_bases
 
@@ -118,7 +118,6 @@ def findall_mismatches(read, end_trim=0):
             is_for_ref=True,
             reverse=False,
         )
-
         
         mapped_seq = lt_seq[-1] + rt_seq[: span - 1]
         mapped_qual = [lt_qual[-1]] + list(rt_qual[: span - 1])
@@ -127,7 +126,7 @@ def findall_mismatches(read, end_trim=0):
         pos = start  # pos for first elem of the rt side
         for r, a, q in zip(mapped_ref, mapped_seq, mapped_qual):
             if r != a:
-                if aln_start + end_trim < pos < aln_end - end_trim:
+                if aln_start + end_trim <= pos <= aln_end - end_trim:
                     mismatches.append((pos, r.upper(), a, q))
 
             pos += 1
@@ -137,24 +136,39 @@ def findall_mismatches(read, end_trim=0):
     return read
 
 
-def is_worth_realn(read, qual_lim=23):
+def is_worth_realn(read, target_indel, qual_lim=23):
 
     if read["covering_subread"]:
+        is_covered = True
         covering_start, covering_end = (
             read["covering_subread"][0],
             read["covering_subread"][1],
         )
     else:
-        return False
+        is_covered = False
+        if target_indel.is_ins:
+            return False
+        else:
+            covering_start = target_indel.pos
+            covering_end = covering_start + len(target_indel.ref)
+
+    dist_to_left_end = target_indel.pos - read["aln_start"]
+    dist_to_right_end = read["aln_end"] - target_indel.pos
+    if dist_to_left_end < 0:
+        is_lefty = True
+    elif dist_to_right_end < 0:
+        is_lefty = False
+    else:
+        is_lefty = (dist_to_left_end <= dist_to_right_end)
 
     start_cigar, end_cigar = read["cigar_list"][0], read["cigar_list"][-1]
 
     # start clipped
-    if covering_start < read["aln_start"] and int(start_cigar[:-1]) > 3:
+    if is_lefty and covering_start < read["aln_start"] <= covering_end and int(start_cigar[:-1]) > 2:
         return True
 
     # end clipped
-    if read["aln_end"] < covering_end and int(end_cigar[:-1]) > 3:
+    if not is_lefty and  covering_start <= read["aln_end"] < covering_end and int(end_cigar[:-1]) > 2:
         return True
 
     mismatches = [
@@ -162,16 +176,49 @@ def is_worth_realn(read, qual_lim=23):
         for var in read["mismatches"]
         if covering_start <= var[0] <= covering_end and var[3] > qual_lim
     ]
+    
+    shiftable_pos = [v.pos for v in target_indel.generate_equivalents()]
+    lt_pos, rt_pos = min(shiftable_pos), max(shiftable_pos)
+
+    if lt_pos < rt_pos:
+        if is_lefty:
+            if lt_pos < read["aln_start"]:
+                lt_end_read = read["read_seq"][: (rt_pos - read["aln_start"])]
+                lt_end_ref = read["ref_seq"][: (rt_pos - read["aln_start"])]
+                if lt_end_read == lt_end_ref:
+                    return False
+        else:
+            if read["aln_end"] <= rt_pos:
+                rt_end_read = read["read_seq"][-(read["aln_end"] - lt_pos) :]
+                rt_end_ref = read["ref_seq"][-(read["aln_end"] - lt_pos) :]
+                if rt_end_read == rt_end_ref:
+                    return False  
+
+
+    if mismatches:
+        if is_lefty:
+            lt_most_pos = min(var[0] for var in mismatches)
+            with_end_mismatches = abs(lt_most_pos - read["aln_start"]) < 4
+        else:
+            rt_most_pos = max(var[0] for var in mismatches)
+            with_end_mismatches = abs(rt_most_pos - read["aln_end"]) < 4
+        
+        if with_end_mismatches:
+            return True
+        else:
+            if is_covered:
+                return True
+            else:
+                return False
 
     indels = [
         var for var in read["I"] + read["D"] if covering_start <= var[0] <= covering_end
     ]
 
-    if len(mismatches) > 2 or indels:
+    if indels:
         return True
-    else:
-        return False
-
+    
+    return False
 
 def is_target_by_ssw(
     read,
@@ -190,74 +237,202 @@ def is_target_by_ssw(
     basequalthresh,
     mapq_lim,
     mapped_base_cnt_thresh=40,
-    allow_mismatches=2,
+    allow_mismatches=10,
 ):
 
     # already found
     if read["is_target"]:
         return read
-
-    if read["is_reference_seq"] or read["mapq"] <= mapq_lim or not is_worth_realn(read):
+    
+    if read["is_reference_seq"] or read["mapq"] <= mapq_lim or not is_worth_realn(read, target_indel):
         read["is_target"] = False
         return read
 
     read_seq = read["read_seq"]
 
+    ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     # forced to align by setting gap_open_penalty=len(read_seq)
     mut_aln = align(mut_aligner, read_seq, len(read_seq), gap_extension_penalty)
-    mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
     
-    ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
-    
-    if target_indel.count_repeats() < 1:
-        if len(mut_cigar_list) == 1:
-            mapped_len = int(mut_cigar_list[0][:-1])
-            mut_ref = mut_ref_lt + mut_ref_mid + mut_ref_rt
-            lq_mismatch_cnt = count_lowqual_non_ref_bases(
-                                read_seq[mut_aln.read_start : (mut_aln.read_end + 1)],
-                                mut_ref[mut_aln.reference_start : (mut_aln.reference_end + 1)],
-                                read["read_qual"][mut_aln.read_start : (mut_aln.read_end + 1)],
-                                mut_cigar_list,
-                                basequalthresh,
-                              ) 
-            
-            if mut_aln.reference_start < len(mut_ref_lt) and (len(mut_ref_lt) -  mut_aln.reference_start) + len(mut_ref_mid) <  mapped_len:
-                allow_mismatches = (
-                    0 if len(target_indel.indel_seq) < 4 else allow_mismatches
-                )
-                
-                # doesn't penalize low qual mismatches
-                if mut_aln.optimal_score + lq_mismatch_cnt * match_score >= match_score * mapped_len - (
-                    allow_mismatches * mismatch_penalty
-                ):
-                    read["is_target"] = True
-                    return read
-    
-    if len(mut_cigar_list) == 1:
-        pass
-    elif not indel_type in ref_aln.CIGAR:
-        return read
-
-    # lower score against mut_ref alignment
     if mut_aln.optimal_score <= ref_aln.optimal_score:
         read["is_target"] = False
         return read
+    
+    mut_aln_cigar = mut_aln.CIGAR
+    mut_aln_ref_start = mut_aln.reference_start
+    mut_aln_ref_end = mut_aln.reference_end
+    mut_aln_read_start = mut_aln.read_start
+    mut_aln_read_end = mut_aln.read_end
+    mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
 
-    # too few mapped bases
-    mapped_bases = sum(
-        [int(c[:-1]) for c in cigar_ptrn.findall(mut_aln.CIGAR) if "M" in c]
-    )
-    if mapped_bases <= mapped_base_cnt_thresh:
-        read["is_target"] = False
+    target_covered = is_covering_target(
+                    read["read_name"],
+                    read_seq,
+                    target_indel.indel_seq,
+                    mut_ref_lt,
+                    mut_ref_mid,
+                    mut_ref_rt,
+                    mut_aln_cigar,
+                    len(read_seq), 
+                    mut_aln_ref_start,
+                    mut_aln_ref_end,
+                    mut_aln_read_start,
+                    mut_aln_read_end,
+                    target_indel.count_repeats(),
+                   )
+    
+    if target_covered:
+        read["is_target"] = True
+        return read
+    else:
         return read
 
-    read["is_target"] = is_compatible(
-        parse_read_by_mut_aln(mut_aln, contig, read, indel_type), contig, indel_type
-    )
+cdef bint is_covering_target(
+    str readname,
+    str read_seq,
+    str indel_seq,
+    str mut_ref_lt,
+    str mut_ref_mid,
+    str mut_ref_rt,
+    str mut_aln_cigar,
+    int read_seq_len, 
+    int ref_aln_start,
+    int ref_aln_end,
+    int read_aln_start,
+    int read_aln_end,
+    int n_repeats,
+):
+    cdef list mut_cigar_list = cigar_ptrn.findall(mut_aln_cigar)
+    
+    if len(mut_cigar_list) > 1:
+        return False
+    
+    cdef str repeat_unit = to_minimal_repeat_unit(indel_seq)
+    cdef int mapped_len = int(mut_cigar_list[0][:-1])
+    cdef int mut_ref_lt_len = len(mut_ref_lt)
+    cdef int mut_ref_mid_len = len(mut_ref_mid)
+    cdef int mut_ref_rt_len = len(mut_ref_rt)
+    cdef int lt_consumption
+    cdef int rt_consumption
+    cdef int total_consumption = read_aln_end - read_aln_start + 1
+    cdef bint is_lt_indel_end_reached 
+    cdef bint is_rt_indel_end_reached
+    cdef bint is_lt_read_consumed = (read_aln_start == 0)
+    cdef bint is_rt_read_consumed = (read_aln_end == read_seq_len - 1)
 
-    read["aln_score"] = (mut_aln.optimal_score, ref_aln.optimal_score)
+    # not covering indel 
+    if ref_aln_end < mut_ref_lt_len:
+        return False
+    elif mut_ref_lt_len + mut_ref_mid_len <= ref_aln_start:
+        return False  
+    
+    # ins
+    if mut_ref_mid_len:
+        if ref_aln_start < mut_ref_lt_len:
+            lt_consumption = mut_ref_lt_len - ref_aln_start
 
-    return read
+            if total_consumption > lt_consumption + mut_ref_mid_len:
+                lt_read = read_seq[read_aln_start : read_aln_start + lt_consumption]
+                mid_read = read_seq[read_aln_start + lt_consumption : read_aln_start + lt_consumption + mut_ref_mid_len]
+                rt_read = read_seq[read_aln_start + lt_consumption + mut_ref_mid_len : read_aln_end]
+                
+                lt_check = is_compatible_repeats(lt_read, repeat_unit, n_repeats, is_left=True)
+                rt_check = is_compatible_repeats(rt_read, repeat_unit, n_repeats, is_left=False)
+                
+                if lt_check and rt_check:
+                    return True
+                else:
+                    return False
+            else:
+                # aligne from left and ended in inserted seq
+                if n_repeats:
+                    return False
+                else:
+                    if is_rt_read_consumed:
+                        return True
+                    else:
+                        rt_consumption = total_consumption - lt_consumption
+                        if rt_consumption > 1:
+                            return True
+                        else:
+                            return False
+        else:
+            # no left side alignment
+
+            if n_repeats:
+                return False 
+
+            if is_lt_read_consumed:
+                return True
+            else:
+                lt_consumption = mut_ref_lt_len + mut_ref_mid_len - ref_aln_start
+                if lt_consumption > 1:
+                    return True
+                else:
+                    return False   
+                
+    else:
+        lt_consumption = mut_ref_lt_len - ref_aln_start
+        rt_consumption = total_consumption - lt_consumption
+        
+        lt_read = read_seq[read_aln_start : read_aln_start + lt_consumption]
+        rt_read = read_seq[read_aln_start + lt_consumption  : read_aln_end]
+        
+        lt_check = is_compatible_repeats(lt_read, repeat_unit, n_repeats, is_left=True)
+        rt_check = is_compatible_repeats(rt_read, repeat_unit, n_repeats, is_left=False)
+        
+        if lt_check and rt_check:
+            pass
+        else:
+            return False
+
+        if lt_consumption <= rt_consumption:
+            if is_lt_read_consumed:
+                return True
+            else:
+                if lt_consumption > 2:
+                    return True
+                else:
+                    return False
+        else:
+            if is_rt_read_consumed:
+                return True
+            else:
+                if rt_consumption > 2:
+                    return True
+                else:
+                    return False
+
+
+def is_compatible_repeats(seq, repeat_unit, expected_n_repeats, is_left):
+    unit_len = len(repeat_unit)
+    
+    
+    if is_left:
+        seq = seq[::-1]
+        repeat_unit = repeat_unit[::-1]
+    
+    cnt = 0
+    is_done = False
+    while not is_done:
+        if not seq:
+            is_done = True
+        elif repeat_unit == seq[: unit_len]:
+            seq = seq[unit_len :]
+            cnt += 1
+        else:
+            is_done = True
+
+    is_compatible = True
+    if not seq:
+        is_compatible = False
+    else:
+        if cnt and cnt != expected_n_repeats:
+            is_compatible = False
+
+    return is_compatible
+
+
 
 
 def make_aligner(ref_seq, match_score, mismatch_penalty):

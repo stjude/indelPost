@@ -29,9 +29,9 @@ def get_gap_ptrn2(read):
     pos = read["aln_start"]
     for cigar in read["cigar_list"]:
         event, event_len = cigar[-1], int(cigar[:-1])
-        if event in ("M", "X", "=", "N"):
+        if event in ("M", "X", "="):
             pos += event_len
-        elif event in ["I", "D"]:
+        elif event in ["I", "D", "N"]:
             ptrn += "{}@{}".format(cigar, pos-1)
             if event == "D":
                 pos += event_len
@@ -170,12 +170,12 @@ def repeat_counter(query_seq, flank_seq):
     """
     qlen, flen = len(query_seq), len(flank_seq)
     count = 0 
-
+    
     if flen < qlen:
         return count
     
     for i in range(0, flen, qlen):
-        if flank_seq[i : i + qlen] == query_seq:
+        if flank_seq[i  : i + qlen] == query_seq:
             count += 1
         else:
             break
@@ -269,9 +269,11 @@ cdef list get_spliced_subreads(str cigarstring, int read_start_pos, int read_end
     
     if prev_event != "N":
         pos_lst.append(read_end_pos) 
+    
     while i < len(pos_lst):
         res.append(pos_lst[i : i+2])
         i += 2
+    
     return res
 
 
@@ -570,7 +572,7 @@ cpdef tuple get_local_reference(
                 left_len = len(local_reference) - (rt_end - pos)
                 first_pass = True
 
-    else:   
+    else:
         local_reference = reference.fetch(chrom, max(0, pos - window * 3), min(pos + window * 3, ref_len))
         left_len = pos - max(0, pos - window * 3)
     

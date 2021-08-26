@@ -1,4 +1,3 @@
-# cython: embedsignature=True
 # cython: profile=True
 
 from .utilities import *
@@ -8,8 +7,7 @@ from pysam.libcbcf cimport VariantFile
 
 
 cdef class NullVariant:
-    """This class is returned when :class:`~indelpost.VariantAlignment` cannot find the 
-    target indel in the BAM file. Boolean expression evaluates to `False <https://docs.python.org/3/library/stdtypes.html#boolean-values>`__. Ref and Alt alleles are the 
+    """This class is returned when :class:`~indelpost.VariantAlignment` cannot find the target indel in the BAM file. Boolean expression evaluates to `False <https://docs.python.org/3/library/stdtypes.html#boolean-values>`__. Ref and Alt alleles are the 
     reference base at the locus.
     
     Parameters
@@ -101,8 +99,7 @@ cdef class Variant:
         self.chrom = self.__format_chrom_name(self._chrom, reference=reference)
 
         self.__validate()
-
-    
+     
     def __getstate__(self):
         return (self.chrom, self.pos, self.ref, self.alt, self.reference.filename) 
         
@@ -223,12 +220,15 @@ cdef class Variant:
         cdef Variant i, j
         i, j = self.normalize(), other.normalize()
 
-        equivalent = (
-            i._chrom.replace("chr", "") == j._chrom.replace("chr", "")
-            and i.pos == j.pos
-            and j.ref.upper() == i.ref.upper()
-            and i.alt.upper() == j.alt.upper()
-        )
+        try:
+            equivalent = (
+                i._chrom.replace("chr", "") == j._chrom.replace("chr", "")
+                and i.pos == j.pos
+                and j.ref.upper() == i.ref.upper()
+                and i.alt.upper() == j.alt.upper()
+            )
+        except: 
+            return False
 
         return equivalent
 
@@ -285,7 +285,7 @@ cdef class Variant:
         else:
             i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
         
-        condition_1 = i.ref[-1].upper() == i.alt[-1].upper()
+        condition_1 = i.ref[-1].upper() == i.alt[-1].upper() != "N" 
         while condition_1:
             
             try:
@@ -297,7 +297,8 @@ cdef class Variant:
             i.ref = left_base + i.ref[:-1]
             i.alt = left_base + i.alt[:-1]
             i.pos -= 1
-            condition_1 = i.ref[-1].upper() == i.alt[-1].upper()
+            
+            condition_1 = i.ref[-1].upper() == i.alt[-1].upper() != "N"
 
         condition_2 = i.ref[0].upper() == i.alt[0].upper()
         condition_3 = len(i.ref) > 1 and len(i.alt) > 1
@@ -577,8 +578,8 @@ cdef class Variant:
         
         window = 100
         mut_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos) + var.alt + self.reference.fetch(var.chrom, rt_pos, rt_pos + window)
-        ref_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos + window)
-
+        ref_seq = self.reference.fetch(var.chrom, lt_pos - window, lt_pos + len(var.ref) + window)
+        
         aln = align(make_aligner(ref_seq, match_score, mismatch_penalty), mut_seq, gap_open_penalty, gap_extension_penalty) 
         
         genome_aln_pos = lt_pos + 1 - window + aln.reference_start

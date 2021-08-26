@@ -23,7 +23,6 @@ or::
 
 Installing indelPost also installs the dependency:
 
-    - python>=3.6.0
     - numpy>=1.16.0
     - pysam>=0.15.0
     - cython>=0.29.12
@@ -32,7 +31,7 @@ Installing indelPost also installs the dependency:
 
 .. note::
     
-    indelPost is supported for Linux.
+    indelPost is supported for Linux with Python>=3.6.
 
 Contents
 --------
@@ -45,12 +44,4 @@ Contents
    examples.rst
    benchmark.rst
 
-
-Indices and tables
-------------------
-
-Contetns:
-
 * :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

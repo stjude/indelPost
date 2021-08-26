@@ -1,6 +1,6 @@
 from .variant import Variant
 from indelpost.utilities cimport split
-from .utilities import split_cigar, get_local_reference, relative_aln_pos
+from .utilities import split_cigar, get_local_reference, relative_aln_pos, most_common
 from .localn import make_aligner, align, findall_indels
 
 from indelpost.utilities cimport split
@@ -25,14 +25,19 @@ def find_by_normalization(
     Returns:
         annoated pileup (list): a list of dictized read (dict) 
     """
+    
+    pos = target.pos 
+
     if target.is_indel:
         pileup = [is_target_by_normalization(read, target) for read in pileup]
+        _pos = [read.get("observed_pos", pos) for read in pileup if read["is_target"]]
+        pos = most_common(_pos) if _pos else pos 
     else:
         is_single = (target.variant_type == "S")
-        pos, alt_bases = target.pos, target.alt
+        alt_bases = target.alt
         pileup = [is_substitute_target(read, pos, alt_bases, is_single) for read in pileup]
     
-    return target, pileup, gap_extension_penalty
+    return target, pileup, gap_extension_penalty, pos
 
     ##target, extension_penalty_used = seek_larger_gapped_aln(
     #    target,
@@ -85,7 +90,8 @@ def is_target_by_normalization(read, target):
             pos = target.pos
             if avoid_left_aln(read, target):
                 pos = indel[0] # pos observed in alignment
-            
+                read["observed_pos"] = pos
+                 
             read["is_target"] = True
 
             # trim clipped bases
@@ -247,9 +253,6 @@ def seek_larger_gapped_aln(
 ):
 
     read, center_score = get_most_centered_read(target, pileup)
-    
-    #soft_pos = [read["aln_end"] for read in pileup if read["is_target"]]
-    #print(soft_pos)
      
     if not read:
         return target, gap_extension_penalty

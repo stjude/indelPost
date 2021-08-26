@@ -21,7 +21,7 @@ indel processing on alignment files (BAM)
                      lt_target_block_consensus_scores, lt_target_block_consensus_seq,
                      mapq, mismatches, non_target_indels, qc_passed, qc_stats, rt_consensus_scores,
                      rt_consensus_scores, rt_consensus_seq, rt_target_block_consensus_seq, rt_target_block_consensus_scores,
-                     splice_pattern
+                     splice_pattern, lt_end_pos
 
 .. autoclass:: indelpost.FailedContig()
    :members:
