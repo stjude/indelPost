@@ -1,3 +1,5 @@
+#cython: profile=True
+
 import re
 import random
 cimport cython
@@ -298,11 +300,11 @@ cdef tuple leftalign_indel_read(
         indel_seq = rt_flank[:indel_len]
         rt_flank = rt_flank[indel_len:]
         rt_qual = rt_qual[indel_len:]
-        var = Variant(chrom, pos, padding_base, padding_base + indel_seq, reference)
+        var = Variant(chrom, pos, padding_base, padding_base + indel_seq, reference, skip_validation=True)
     else:
         indel_seq = rt_ref[:indel_len]
         rt_ref = rt_ref[indel_len:]
-        var = Variant(chrom, pos, padding_base + indel_seq, padding_base, reference)
+        var = Variant(chrom, pos, padding_base + indel_seq, padding_base, reference, skip_validation=True)
     
     return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
     
@@ -612,10 +614,13 @@ def retarget(
     candidates, candidate_reads, candidate_ref_seqs, candidate_ref_starts, candidate_aligners = [], [], [], [], []
     for read, aln, ref_seq, ref_start, aligner in zip(non_refs, ref_alns, ref_seqs, ref_starts, aligners):
         genome_aln_pos = ref_start + aln.reference_start
-        
+       
+        aligned_read_len = (aln.read_end - aln.read_start) 
+        aligned_frac = aligned_read_len / len(read["read_seq"])
+         
         gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
             
-        if 0 < gap_cnt < 6:
+        if 0 < gap_cnt < 6 and aligned_frac > 0.7:
             indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
             positions = [d["pos"] for d in indels]
             complex_positions = set([p for p in positions if positions.count(p) == 2])
@@ -644,8 +649,8 @@ def retarget(
                         alt = indel["lt_ref"][-1]
                         ref = alt + indel["del_seq"]
                 
-                var = Variant(target.chrom, indel["pos"], ref, alt, target.reference)
-                
+                var = Variant(target.chrom, indel["pos"], ref, alt, target.reference, skip_validation=True)
+                 
                 # non-target indel found in read end -> do not consider
                 read_end_thresh = len(read["read_seq"]) / 30
                 if var.pos - read["read_start"] <= read_end_thresh or read["read_end"] - var.pos <= read_end_thresh:
@@ -804,7 +809,7 @@ def update_read_info(
                 alt = indel["lt_ref"][-1]
                 ref = alt + indel["del_seq"]
             
-            obj = Variant(candidate.chrom, indel["pos"], ref, alt, candidate.reference)
+            obj = Variant(candidate.chrom, indel["pos"], ref, alt, candidate.reference, skip_validation=True)
             if candidate == obj:
                 is_found = True
                 indel_pos_in_this_read = indel["pos"]

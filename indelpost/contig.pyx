@@ -164,7 +164,7 @@ cdef class Contig:
 
     def __profile_non_target_variants(self):
         non_target_variants = [
-            Variant(self.target.chrom, k, v[0], v[1], self.target.reference)
+            Variant(self.target.chrom, k, v[0], v[1], self.target.reference, skip_validation=True)
             for k, v in self.contig_dict.items()
             if v[0] and v[0] != v[1] and k != self.target.pos
         ]
@@ -256,7 +256,7 @@ cdef class Contig:
         reference = self.target.reference
         for k, v in self.contig_dict.items():
             if v[1] and v[0] and v[1] != v[0]:
-                phasables.append(Variant(chrom, k, v[0], v[1], reference))
+                phasables.append(Variant(chrom, k, v[0], v[1], reference, skip_validation=True))
        
         return phasables 
         

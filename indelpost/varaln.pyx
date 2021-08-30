@@ -1,5 +1,5 @@
 #cython: embedsignature=True
-#cython: profile=False
+#cython: profile=True
 
 cimport cython
 import random
@@ -844,7 +844,8 @@ def right_aligner(read, target):
                                     ref_pos - 1, 
                                     ref, 
                                     alt, 
-                                    reference
+                                    reference,
+                                    skip_validation=True
                                 ).generate_equivalents()
 
             diff = max(v.pos for v in right_aligned_vars) - ref_pos + 1
