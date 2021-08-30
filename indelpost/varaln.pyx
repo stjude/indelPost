@@ -753,6 +753,7 @@ cdef list preprocess_for_contig_construction(
                 mismatch_penalty,
                 gap_open_penalty,
                 gap_extension_penalty,
+                unspl_loc_ref,
             )
             if "N" in read["cigar_string"] else 
             update_read_info(
@@ -791,9 +792,10 @@ def update_spliced_read_info(
     match_score, 
     mismatch_penalty, 
     gap_open_penalty, 
-    gap_extension_penalty
+    gap_extension_penalty,
+    unspl_loc_ref,
 ):
-    ref_seq, lt_len = get_local_reference(orig_target, [read], window)
+    ref_seq, lt_len = get_local_reference(orig_target, [read], window, unspl_loc_ref)
     aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
     ref_start = orig_target.pos + 1 - lt_len
     
