@@ -26,6 +26,7 @@ from indelpost.utilities cimport split
 from indelpost.contig cimport Contig, FailedContig 
 
 from indelpost.variant cimport Variant, NullVariant
+from indelpost.local_reference cimport UnsplicedLocalReference
 
 from pysam.libcalignmentfile cimport AlignmentFile
 
@@ -132,6 +133,13 @@ cdef class VariantAlignment:
         self.gap_open_penalty = gap_open_penalty
         self.gap_extension_penalty = gap_extension_penalty
         self.auto_adjust_extension_penalty = auto_adjust_extension_penalty
+        self.unspliced_local_reference = UnsplicedLocalReference(
+                                            self.__target.chrom,
+                                            self.__target.pos,
+                                            self.__target.reference.get_reference_length(self.__target.chrom),
+                                            self.window,
+                                            self.__target.reference
+                                         )
         self.__pileup, self.contig = self.__parse_pileup()
     
     cdef __parse_pileup(self, Contig contig=None, bint retargeted=False):
@@ -153,6 +161,7 @@ cdef class VariantAlignment:
             pileup, self.__sample_factor = make_pileup(
                 self.__target,
                 self.bam,
+                self.unspliced_local_reference,
                 exclude_duplicates=self.exclude_duplicates,
                 window=self.window,
                 downsamplethresh=self.downsamplethresh,
@@ -189,12 +198,14 @@ cdef class VariantAlignment:
                     self.__target,
                     self.target,
                     pileup,
+                    self.unspliced_local_reference,
                     self.window,
                     self.match_score,
                     self.mismatch_penalty,
                     self.gap_open_penalty,
                     exptension_penalty_used,
                 ),
+                self.unspliced_local_reference,
                 self.basequalthresh,
                 self.mapqthresh,
             )
@@ -223,7 +234,7 @@ cdef class VariantAlignment:
                         self.gap_extension_penalty,
                     )
                     if not non_spurious_overhangs:
-                        contig = Contig(self.__target, [], self.basequalthresh, self.mapqthresh)
+                        contig = Contig(self.__target, [], self.unspliced_local_reference, self.basequalthresh, self.mapqthresh)
                         self.is_spurious_overhang = True
                         return pileup, contig
                     else:
@@ -236,13 +247,14 @@ cdef class VariantAlignment:
                             self.retarget_cutoff,
                             self.match_score,
                             self.mismatch_penalty,
-                            grid
+                            grid,
+                            self.unspliced_local_reference
                         )
                          
                         if res:
                             self.gap_open_penalty, self.gap_extension_penalty = res[2], res[3]
                         else:      
-                            contig = Contig(self.__target, [], self.basequalthresh, self.mapqthresh)
+                            contig = Contig(self.__target, [], self.unspliced_local_reference, self.basequalthresh, self.mapqthresh)
                             self.is_spurious_overhang = True
                             return pileup, contig
                 else:
@@ -256,6 +268,7 @@ cdef class VariantAlignment:
                         self.match_score,
                         self.mismatch_penalty,
                         grid,
+                        self.unspliced_local_reference
                     )
                     
                     if res:
@@ -283,12 +296,14 @@ cdef class VariantAlignment:
                             self.__target,
                             self.__target,
                             self.__pileup,
+                            self.unspliced_local_reference,
                             self.window,
                             self.match_score,
                             self.mismatch_penalty,
                             self.gap_open_penalty,
                             self.gap_extension_penalty,
                         ),
+                        self.unspliced_local_reference,
                         self.basequalthresh,
                         self.mapqthresh
                     )
@@ -329,6 +344,7 @@ cdef class VariantAlignment:
                        self.match_score,
                        self.mismatch_penalty,
                        grid,
+                       self.unspliced_local_reference
                    )
               
                if res:
@@ -376,12 +392,14 @@ cdef class VariantAlignment:
                     self.__target,
                     self.target,
                     pileup,
+                    self.unspliced_local_reference,
                     self.window,
                     self.match_score,
                     self.mismatch_penalty,
                     self.gap_open_penalty,
                     self.gap_extension_penalty,
                 ),
+                self.unspliced_local_reference,
                 self.basequalthresh,
                 self.mapqthresh,
             )
@@ -497,7 +515,7 @@ cdef class VariantAlignment:
         
         pos, indel_len = self._observed_pos, len(self.target.indel_seq)
 
-        r_pos = max(v.pos for v in self.target.generate_equivalents())
+        r_pos = max(v.pos for v in self.__target.generate_equivalents())
         
         margin = r_pos - pos 
         
@@ -682,6 +700,7 @@ cdef list preprocess_for_contig_construction(
     Variant target,
     Variant orig_target,
     list pileup,
+    UnsplicedLocalReference unspl_loc_ref,
     int window,
     int match_score,
     int mismatch_penalty,
@@ -718,7 +737,7 @@ cdef list preprocess_for_contig_construction(
     else:
         targetpileup = sorted(targetpileup, key=partial(centrality, target_pos=target.pos))
         
-        unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, window, unspliced=True) 
+        unspl_ref_seq, unspl_lt_len = get_local_reference(orig_target, pileup, window, unspl_loc_ref, unspliced=True) 
         unspl_aligner = make_aligner(unspl_ref_seq, match_score, mismatch_penalty)
         unspl_start = orig_target.pos + 1 - unspl_lt_len 
         
@@ -949,7 +968,8 @@ def grid_search(
     retarget_cutoff,
     match_score,
     mismatch_penalty,
-    grid
+    grid,
+    unspl_loc_ref,
 ):
     # grid = [(gap.open, gap.ext)]
     h = 0
@@ -966,6 +986,7 @@ def grid_search(
             mismatch_penalty,
             grid[h][0],
             grid[h][1],
+            unspl_loc_ref,
         )
       
         if res:

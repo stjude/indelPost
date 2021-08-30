@@ -4,6 +4,7 @@
 from pysam.libcalignmentfile cimport AlignmentFile
 from indelpost.variant cimport Variant
 from indelpost.contig cimport Contig
+from indelpost.local_reference cimport UnsplicedLocalReference
 
 cdef class VariantAlignment:
     cdef Variant target, __target
@@ -16,5 +17,6 @@ cdef class VariantAlignment:
     cdef list __pileup
     cdef readonly is_spurious_overhang
     cdef readonly Contig contig
+    cdef readonly UnsplicedLocalReference unspliced_local_reference
 
     cdef __parse_pileup(self, Contig contig=*, bint retargeted=*)

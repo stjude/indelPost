@@ -51,6 +51,9 @@ extensions = [
         "indelpost.contig", ["indelpost/contig.pyx"], include_dirs=pysam_get_include(),
     ),
     Extension(
+        "indelpost.local_reference", ["indelpost/local_reference.pyx"], include_dirs=pysam_get_include(),
+    ),
+    Extension(
         "indelpost.softclip",
         ["indelpost/softclip.pyx"],
         include_dirs=pysam_get_include(),

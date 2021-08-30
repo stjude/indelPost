@@ -12,6 +12,8 @@ from difflib import get_close_matches, SequenceMatcher
 
 
 from indelpost.variant cimport Variant
+from indelpost.local_reference cimport UnsplicedLocalReference
+
 from .consensus import consensus_refseq
 from .gappedaln import find_by_normalization
 
@@ -49,6 +51,7 @@ cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 cdef tuple make_pileup(
     Variant target, 
     AlignmentFile bam, 
+    UnsplicedLocalReference unspl_loc_ref,
     bint exclude_duplicates, 
     int window, 
     int downsamplethresh, 
@@ -87,7 +90,7 @@ cdef tuple make_pileup(
         sample_factor = 1.0
 
     pileup = [
-        dictize_read(seg, chrom, pos, rpos, reference, basequalthresh) for seg in pileup
+        dictize_read(seg, chrom, pos, rpos, reference, unspl_loc_ref, basequalthresh) for seg in pileup
     ]
     
     pileup = [read for read in pileup if not is_within_intron(read, pos, window)]
@@ -137,7 +140,15 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
     return reads
 
 
-cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaFile reference, int basequalthresh):
+cdef dict dictize_read(
+    AlignedSegment read, 
+    str chrom, 
+    int pos, 
+    int rpos, 
+    FastaFile reference, 
+    UnsplicedLocalReference unspl_loc_ref, 
+    int basequalthresh
+):
     
     cdef tuple ins, deln
     
@@ -159,7 +170,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     
     read_seq = read.query_sequence
     read_qual = read.query_qualities
-    ref_seq = get_ref_seq(chrom, aln_start, aln_end, cigar_string, cigar_list, reference)
+    ref_seq = get_ref_seq(chrom, aln_start, aln_end, cigar_string, cigar_list, reference, unspl_loc_ref)
 
     read_dict = {
         "read": read,
@@ -249,11 +260,13 @@ cdef str get_ref_seq(
     str cigar_string, 
     list cigar_list,
     FastaFile reference,
+    UnsplicedLocalReference unspl_loc_ref,
 ):
     cdef int current_pos = aln_start - 1
     
     if not "N" in cigar_string:
-        return reference.fetch(chrom, current_pos, aln_end)
+        #reference.fetch(chrom, current_pos, aln_end)
+        return unspl_loc_ref.get_ref_seq(current_pos, aln_end)
     
     cdef str ref_seq = ""
     cdef str event, cigar
@@ -559,6 +572,7 @@ def retarget(
     mismatch_penalty,
     gap_open_penalty,
     gap_extension_penalty,
+    unspl_loc_ref,
 ):
     target_seq, target_type, target_pos  = target.indel_seq, target.variant_type, target.pos
 
@@ -601,7 +615,7 @@ def retarget(
 
     ref_starts, ref_alns, ref_seqs, aligners = [], [], [], []
     for read in non_refs:
-        ref_seq, lt_len = get_local_reference(target, [read], window)
+        ref_seq, lt_len = get_local_reference(target, [read], window, unspl_loc_ref)
         ref_seqs.append(ref_seq)        
         
         aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
@@ -682,6 +696,7 @@ def retarget(
                         mismatch_penalty,
                         gap_open_penalty,
                         gap_extension_penalty,
+                        unspl_loc_ref
                    )
         else:
             return None
@@ -750,6 +765,7 @@ def retarget(
                         mismatch_penalty,
                         gap_open_penalty,
                         gap_extension_penalty,
+                        unspl_loc_ref
                     )
         else:
             return None
