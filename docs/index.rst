@@ -13,7 +13,7 @@ indelPost: Python library for simple and complex indels.
 
 To install::
     
-    pip install indelpost
+    pip install indelpost --no-binary indelpost --no-build-isolation
 
 or::
     
