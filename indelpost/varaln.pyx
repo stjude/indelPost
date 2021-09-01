@@ -1,5 +1,5 @@
 #cython: embedsignature=True
-#cython: profile=True
+#cython: profile=False
 
 cimport cython
 import random

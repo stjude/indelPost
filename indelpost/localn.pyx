@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#cython: profile=False
 
 import re
 import numpy as np

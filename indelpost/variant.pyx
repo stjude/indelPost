@@ -1,4 +1,4 @@
-# cython: profile=True
+#cython: profile=False
 
 from .utilities import *
 from .localn import make_aligner, align, findall_indels

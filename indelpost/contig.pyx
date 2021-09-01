@@ -1,5 +1,5 @@
-# cython: embedsignature=True
-#cython: profile=True
+#cython: embedsignature=True
+#cython: profile=False
 
 import random
 import numpy as np
