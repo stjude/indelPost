@@ -13,7 +13,7 @@ users write their own scripts to solve alignment-sensitive problems such as:
 
 To install (require Linux with Python>=3.6 pre-installed):
 ```
-pip install indelpost
+pip install indelpost --no-binary indelpost --no-build-isolation
 ```
 
 Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
