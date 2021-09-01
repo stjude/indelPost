@@ -1,4 +1,4 @@
-#cython: profile=True
+#cython: profile=False
 
 import re
 from cpython cimport array
@@ -11,6 +11,7 @@ from functools import reduce
 from pysam.libcbcf cimport VariantRecord, VariantRecordFilter, VariantFile
 
 from indelpost.variant cimport Variant
+from indelpost.local_reference cimport UnsplicedLocalReference
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
@@ -505,6 +506,7 @@ cpdef tuple get_local_reference(
     Variant target, 
     list pileup, 
     int window, 
+    UnsplicedLocalReference unspl_loc_ref,
     bint unspliced=False,
     bint splice_pattern_only=False,
 ):
@@ -573,9 +575,11 @@ cpdef tuple get_local_reference(
                 first_pass = True
 
     else:
-        local_reference = reference.fetch(chrom, max(0, pos - window * 3), min(pos + window * 3, ref_len))
+        local_reference = unspl_loc_ref.fetch_ref_seq(pos, window)
+        #left_len = unspl_loc_ref.left_len 
+        #local_reference = reference.fetch(chrom, max(0, pos - window * 3), min(pos + window * 3, ref_len))
         left_len = pos - max(0, pos - window * 3)
-    
+
     if splice_pattern_only:
         return tuple(spl_ptrn)
 

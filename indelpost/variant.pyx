@@ -1,4 +1,4 @@
-# cython: profile=False
+#cython: profile=False
 
 from .utilities import *
 from .localn import make_aligner, align, findall_indels
@@ -89,17 +89,20 @@ cdef class Variant:
         other than A/a, C/c, G/g, T/t, and N/n. 
         
     """
-    def __init__(self, str chrom, int pos, str ref, str alt, FastaFile reference):
+    def __init__(self, str chrom, int pos, str ref, str alt, FastaFile reference, skip_validation=False):
         self._chrom = chrom
         self.pos = pos
         self.ref = ref
         self.alt = alt
         self.reference = reference
 
-        self.chrom = self.__format_chrom_name(self._chrom, reference=reference)
-
-        self.__validate()
-     
+        
+        if not skip_validation:
+            self.chrom = self.__format_chrom_name(self._chrom, reference=reference)
+            self.__validate()
+        else:
+            self.chrom = chrom
+        
     def __getstate__(self):
         return (self.chrom, self.pos, self.ref, self.alt, self.reference.filename) 
         
@@ -220,16 +223,19 @@ cdef class Variant:
         cdef Variant i, j
         i, j = self.normalize(), other.normalize()
 
-        try:
-            equivalent = (
-                i._chrom.replace("chr", "") == j._chrom.replace("chr", "")
+        chrom_eq = (
+            (i.chrom.replace("chr", "") == j.chrom.replace("chr", ""))
+            or
+            (i._chrom.replace("chr", "") == j._chrom.replace("chr", ""))
+        )
+             
+        equivalent = (
+                chrom_eq
                 and i.pos == j.pos
                 and j.ref.upper() == i.ref.upper()
                 and i.alt.upper() == j.alt.upper()
-            )
-        except: 
-            return False
-
+        )
+        
         return equivalent
 
 
@@ -279,26 +285,29 @@ cdef class Variant:
 
         """
         cdef Variant i
-        
+        cdef str ihs
+        cdef int n = 0, lhs_len = 0
+
+
         if inplace:
             i = self
         else:
-            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
+            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference, skip_validation=True)
         
         condition_1 = i.ref[-1].upper() == i.alt[-1].upper() != "N" 
-        while condition_1:
+        lhs = i.reference.fetch(i.chrom, max(0, i.pos - 1 - 300), i.pos - 1)[::-1]
+        lhs_len = len(lhs)
+        while condition_1 and n < lhs_len:
             
-            try:
-                left_base = i.reference.fetch(i._chrom, i.pos - 2, i.pos - 1)
-            except:
-                # when hit the left bound
-                condition_1 = False
+            left_base = lhs[n]
 
             i.ref = left_base + i.ref[:-1]
             i.alt = left_base + i.alt[:-1]
             i.pos -= 1
             
             condition_1 = i.ref[-1].upper() == i.alt[-1].upper() != "N"
+
+            n += 1 
 
         condition_2 = i.ref[0].upper() == i.alt[0].upper()
         condition_3 = len(i.ref) > 1 and len(i.alt) > 1
@@ -319,7 +328,8 @@ cdef class Variant:
         """generates non left-aligned copies of :class:`~indelpost.Variant` object.
         """ 
         
-        i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference).normalize()
+        i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference, skip_validation=True).normalize()
+        
         pos, ref, alt = i.pos, i.ref, i.alt
         is_ins = i.is_ins
         
@@ -327,8 +337,21 @@ cdef class Variant:
         if not i.is_indel:
             return res
         
-        while self == i:
-            right_base = i.right_flank(window=1)
+        
+        window = 300
+        ref_lim = i.reference.get_reference_length(i.chrom)
+        if i.is_non_complex_indel() and i.variant_type == "I":
+            rt_flank = i.reference.fetch(i.chrom, i.pos, min(i.pos + window, ref_lim))
+        else:
+            if i.is_non_complex_indel() and i.variant_type == "D":
+                event_len = len(i.indel_seq)
+            else:
+                event_len = len(i.ref) - 1  
+            rt_flank = i.reference.fetch(i.chrom, i.pos + event_len, min(i.pos + event_len + window, ref_lim))
+
+        n = 0
+        while self == i and n < window:
+            right_base = rt_flank[n]
             if is_ins:
                 ref = alt[1]
                 alt = alt[1:] + right_base
@@ -338,10 +361,13 @@ cdef class Variant:
             
             pos += 1 
             
-            i = Variant(self.chrom, pos, ref, alt, self.reference)
+            i = Variant(self.chrom, pos, ref, alt, self.reference, skip_validation=True)
             
             if self == i: 
                 res.append(i)
+            
+            n += 1
+
         return res
 
 
@@ -351,8 +377,8 @@ cdef class Variant:
             return self.generate_equivalents()
         else:
             # define complex indel at the start and end of the deleted sequence 
-            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
-            j = Variant(self.chrom, self.pos + len(self.ref), self.ref, self.alt, self.reference)
+            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference, skip_validation=True)
+            j = Variant(self.chrom, self.pos + len(self.ref), self.ref, self.alt, self.reference, skip_validation=True)
             return [i, j]
     
 
@@ -370,9 +396,9 @@ cdef class Variant:
             return NullVariant(self.chrom, self.pos, self.reference)
         else:
             if to == "I":
-                return Variant(self.chrom, self.pos, self.alt[0], self.alt, self.reference)
+                return Variant(self.chrom, self.pos, self.alt[0], self.alt, self.reference, skip_validation=True)
             elif to == "D":
-                return Variant(self.chrom, self.pos, self.ref, self.ref[0], self.reference)
+                return Variant(self.chrom, self.pos, self.ref, self.ref[0], self.reference, skip_validation=True)
          
     
     def query_vcf(self, VariantFile vcf, matchby="normalization", window=50, indel_only=True, as_dict=True):
@@ -465,7 +491,7 @@ cdef class Variant:
             if True, the normalized indel position is used as the end of the flanking sequence.
         """ 
         if normalize:
-            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
+            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference, skip_validation=True)
         else:
             i = self
 
@@ -490,7 +516,7 @@ cdef class Variant:
             if True, the normalized indel position is used as the start of the flanking sequence.
         """
         if normalize:
-            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference)
+            i = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference, skip_validation=True)
         else:
             i = self
 
@@ -571,7 +597,7 @@ cdef class Variant:
         if self.is_non_complex_indel():
             return [self]
         
-        var = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference).normalize()
+        var = Variant(self.chrom, self.pos, self.ref, self.alt, self.reference, skip_validation=True).normalize()
         
         lt_pos = var.pos - 1
         rt_pos = var.pos - 1 + len(var.ref)
@@ -597,10 +623,10 @@ cdef class Variant:
                     ref = padding_base
                     alt = padding_base + idl["indel_seq"]
 
-                variants.append(Variant(self.chrom, idl["pos"], ref, alt, self.reference))
+                variants.append(Variant(self.chrom, idl["pos"], ref, alt, self.reference, skip_validation=True))
         
         if snvs:
             for snv in snvs:
-                variants.append(Variant(self.chrom, snv["pos"], snv["ref"], snv["alt"], self.reference))
+                variants.append(Variant(self.chrom, snv["pos"], snv["ref"], snv["alt"], self.reference, skip_validation=True))
              
         return variants

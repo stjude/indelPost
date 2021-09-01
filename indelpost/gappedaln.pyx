@@ -1,3 +1,5 @@
+#cython: profile=False
+
 from .variant import Variant
 from indelpost.utilities cimport split
 from .utilities import split_cigar, get_local_reference, relative_aln_pos, most_common

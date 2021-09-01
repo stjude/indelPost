@@ -1,5 +1,5 @@
-# cython: embedsignature=True
-#cython: profile=True
+#cython: embedsignature=True
+#cython: profile=False
 
 import random
 import numpy as np
@@ -8,6 +8,7 @@ from collections import OrderedDict, namedtuple
 from .utilities import *
 
 from indelpost.variant cimport Variant
+from indelpost.local_reference cimport UnsplicedLocalReference
 
 from .consensus import make_consensus
 
@@ -18,7 +19,7 @@ random.seed(123)
 cdef class Contig:
     """This class represents a consensus contig assembled from a subset (not all) of reads supporting the target indel.
     """
-    def __cinit__(self, Variant target, list pileup, int basequalthresh, int mapqthresh, double low_consensus_thresh=0.7, int donwsample_lim=100):
+    def __cinit__(self, Variant target, list pileup, UnsplicedLocalReference unspl_loc_ref, int basequalthresh, int mapqthresh, double low_consensus_thresh=0.7, int donwsample_lim=100):
         self.target = target
         self.pileup = pileup
 
@@ -28,7 +29,7 @@ cdef class Contig:
             consensus = make_consensus(self.target, self.targetpileup, basequalthresh)
             if consensus:
                 
-                self.splice_pattern = get_local_reference(self.target, consensus[2], window=50, unspliced=False, splice_pattern_only=True)
+                self.splice_pattern = get_local_reference(self.target, consensus[2], 50, unspl_loc_ref, unspliced=False, splice_pattern_only=True)
                 
                 self.__make_contig(consensus[0], consensus[1], basequalthresh)
                
@@ -164,7 +165,7 @@ cdef class Contig:
 
     def __profile_non_target_variants(self):
         non_target_variants = [
-            Variant(self.target.chrom, k, v[0], v[1], self.target.reference)
+            Variant(self.target.chrom, k, v[0], v[1], self.target.reference, skip_validation=True)
             for k, v in self.contig_dict.items()
             if v[0] and v[0] != v[1] and k != self.target.pos
         ]
@@ -256,7 +257,7 @@ cdef class Contig:
         reference = self.target.reference
         for k, v in self.contig_dict.items():
             if v[1] and v[0] and v[1] != v[0]:
-                phasables.append(Variant(chrom, k, v[0], v[1], reference))
+                phasables.append(Variant(chrom, k, v[0], v[1], reference, skip_validation=True))
        
         return phasables 
         

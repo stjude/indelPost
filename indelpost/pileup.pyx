@@ -1,3 +1,5 @@
+#cython: profile=False
+
 import re
 import random
 cimport cython
@@ -10,6 +12,8 @@ from difflib import get_close_matches, SequenceMatcher
 
 
 from indelpost.variant cimport Variant
+from indelpost.local_reference cimport UnsplicedLocalReference
+
 from .consensus import consensus_refseq
 from .gappedaln import find_by_normalization
 
@@ -47,6 +51,7 @@ cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 cdef tuple make_pileup(
     Variant target, 
     AlignmentFile bam, 
+    UnsplicedLocalReference unspl_loc_ref,
     bint exclude_duplicates, 
     int window, 
     int downsamplethresh, 
@@ -85,7 +90,7 @@ cdef tuple make_pileup(
         sample_factor = 1.0
 
     pileup = [
-        dictize_read(seg, chrom, pos, rpos, reference, basequalthresh) for seg in pileup
+        dictize_read(seg, chrom, pos, rpos, reference, unspl_loc_ref, basequalthresh) for seg in pileup
     ]
     
     pileup = [read for read in pileup if not is_within_intron(read, pos, window)]
@@ -135,7 +140,15 @@ cdef list fetch_reads(str chrom, int pos, AlignmentFile bam, int ref_len, int wi
     return reads
 
 
-cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaFile reference, int basequalthresh):
+cdef dict dictize_read(
+    AlignedSegment read, 
+    str chrom, 
+    int pos, 
+    int rpos, 
+    FastaFile reference, 
+    UnsplicedLocalReference unspl_loc_ref, 
+    int basequalthresh
+):
     
     cdef tuple ins, deln
     
@@ -157,7 +170,7 @@ cdef dict dictize_read(AlignedSegment read, str chrom, int pos, int rpos, FastaF
     
     read_seq = read.query_sequence
     read_qual = read.query_qualities
-    ref_seq = get_ref_seq(chrom, aln_start, aln_end, cigar_string, cigar_list, reference)
+    ref_seq = get_ref_seq(chrom, aln_start, aln_end, cigar_string, cigar_list, reference, unspl_loc_ref)
 
     read_dict = {
         "read": read,
@@ -247,12 +260,14 @@ cdef str get_ref_seq(
     str cigar_string, 
     list cigar_list,
     FastaFile reference,
+    UnsplicedLocalReference unspl_loc_ref,
 ):
     cdef int current_pos = aln_start - 1
     
     if not "N" in cigar_string:
-        return reference.fetch(chrom, current_pos, aln_end)
-    
+        #reference.fetch(chrom, current_pos, aln_end)
+        return unspl_loc_ref.get_ref_seq(current_pos, aln_end)
+        
     cdef str ref_seq = ""
     cdef str event, cigar
     cdef int event_len
@@ -298,11 +313,11 @@ cdef tuple leftalign_indel_read(
         indel_seq = rt_flank[:indel_len]
         rt_flank = rt_flank[indel_len:]
         rt_qual = rt_qual[indel_len:]
-        var = Variant(chrom, pos, padding_base, padding_base + indel_seq, reference)
+        var = Variant(chrom, pos, padding_base, padding_base + indel_seq, reference, skip_validation=True)
     else:
         indel_seq = rt_ref[:indel_len]
         rt_ref = rt_ref[indel_len:]
-        var = Variant(chrom, pos, padding_base + indel_seq, padding_base, reference)
+        var = Variant(chrom, pos, padding_base + indel_seq, padding_base, reference, skip_validation=True)
     
     return pos, lt_flank, indel_seq, rt_flank, lt_ref, rt_ref, lt_qual, rt_qual, var
     
@@ -557,6 +572,7 @@ def retarget(
     mismatch_penalty,
     gap_open_penalty,
     gap_extension_penalty,
+    unspl_loc_ref,
 ):
     target_seq, target_type, target_pos  = target.indel_seq, target.variant_type, target.pos
 
@@ -599,7 +615,7 @@ def retarget(
 
     ref_starts, ref_alns, ref_seqs, aligners = [], [], [], []
     for read in non_refs:
-        ref_seq, lt_len = get_local_reference(target, [read], window)
+        ref_seq, lt_len = get_local_reference(target, [read], window, unspl_loc_ref)
         ref_seqs.append(ref_seq)        
         
         aligner = make_aligner(ref_seq, match_score, mismatch_penalty)
@@ -612,10 +628,14 @@ def retarget(
     candidates, candidate_reads, candidate_ref_seqs, candidate_ref_starts, candidate_aligners = [], [], [], [], []
     for read, aln, ref_seq, ref_start, aligner in zip(non_refs, ref_alns, ref_seqs, ref_starts, aligners):
         genome_aln_pos = ref_start + aln.reference_start
-        
+       
+        aligned_read_len = (aln.read_end - aln.read_start) 
+        window_len = window * 6 
+        aligned_frac = aligned_read_len / min(len(read["read_seq"]), window_len)
+         
         gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
             
-        if 0 < gap_cnt < 6:
+        if 0 < gap_cnt < 6 and aligned_frac > 0.7:
             indels = findall_indels(aln, genome_aln_pos, ref_seq, read["read_seq"])
             positions = [d["pos"] for d in indels]
             complex_positions = set([p for p in positions if positions.count(p) == 2])
@@ -644,8 +664,8 @@ def retarget(
                         alt = indel["lt_ref"][-1]
                         ref = alt + indel["del_seq"]
                 
-                var = Variant(target.chrom, indel["pos"], ref, alt, target.reference)
-                
+                var = Variant(target.chrom, indel["pos"], ref, alt, target.reference, skip_validation=True)
+                 
                 # non-target indel found in read end -> do not consider
                 read_end_thresh = len(read["read_seq"]) / 30
                 if var.pos - read["read_start"] <= read_end_thresh or read["read_end"] - var.pos <= read_end_thresh:
@@ -677,6 +697,7 @@ def retarget(
                         mismatch_penalty,
                         gap_open_penalty,
                         gap_extension_penalty,
+                        unspl_loc_ref
                    )
         else:
             return None
@@ -745,6 +766,7 @@ def retarget(
                         mismatch_penalty,
                         gap_open_penalty,
                         gap_extension_penalty,
+                        unspl_loc_ref
                     )
         else:
             return None
@@ -804,7 +826,7 @@ def update_read_info(
                 alt = indel["lt_ref"][-1]
                 ref = alt + indel["del_seq"]
             
-            obj = Variant(candidate.chrom, indel["pos"], ref, alt, candidate.reference)
+            obj = Variant(candidate.chrom, indel["pos"], ref, alt, candidate.reference, skip_validation=True)
             if candidate == obj:
                 is_found = True
                 indel_pos_in_this_read = indel["pos"]
