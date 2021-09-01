@@ -2,8 +2,6 @@
 indelpost/setup.py
 indelpost/*.c
 tests/
-manylinux1_x86_64_latest.sif
-how_to_deploy_to_pip.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
