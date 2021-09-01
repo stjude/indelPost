@@ -267,7 +267,7 @@ cdef str get_ref_seq(
     if not "N" in cigar_string:
         #reference.fetch(chrom, current_pos, aln_end)
         return unspl_loc_ref.get_ref_seq(current_pos, aln_end)
-    
+        
     cdef str ref_seq = ""
     cdef str event, cigar
     cdef int event_len
@@ -630,7 +630,8 @@ def retarget(
         genome_aln_pos = ref_start + aln.reference_start
        
         aligned_read_len = (aln.read_end - aln.read_start) 
-        aligned_frac = aligned_read_len / len(read["read_seq"])
+        window_len = window * 6 
+        aligned_frac = aligned_read_len / min(len(read["read_seq"]), window_len)
          
         gap_cnt = aln.CIGAR.count("I") + aln.CIGAR.count("D")
             
