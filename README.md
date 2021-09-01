@@ -18,3 +18,8 @@ pip install indelpost --no-binary indelpost --no-build-isolation
 
 Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
 
+## Reference
+Hagiwara K et al. (2021) indelPost: harmonizing ambiguities in simple and complex indel alignments. [Bioinformatics](https://doi.org/10.1093/bioinformatics/btab601)
+
+## Contact
+* kohei.hagiwara[AT]stjude.org 
