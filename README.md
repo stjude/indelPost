@@ -11,12 +11,33 @@ users write their own scripts to solve alignment-sensitive problems such as:
 * extract reads supporting the target indel from BAM file
 * pull variant records matching the target indel from VCF file
 
+Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
+
 To install (require Linux with Python>=3.6 pre-installed):
 ```
 pip install indelpost --no-binary indelpost --no-build-isolation
 ```
 
-Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
+## Troubleshoot
+If you get:
+```
+ValueError: pysam.libcalignedsegment.PileupColumn size changed, may indicate binary incompatibility. Expected 88 from C header, got 72 from PyObject
+```
+try:
+```
+pip uninstall cython pysam indelpost
+pip install cython pysam
+pip install indelpost --no-binary indelpost --no-build-isolation
+```
+
+If you do not have [wheel](https://pythonwheels.com/), you will get:
+```
+error: invalid command 'bdist_wheel'
+```
+then first install:
+```
+pip install wheel
+```
 
 ## Reference
 Hagiwara K et al. (2021) indelPost: harmonizing ambiguities in simple and complex indel alignments. [Bioinformatics](https://doi.org/10.1093/bioinformatics/btab601)
