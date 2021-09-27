@@ -573,6 +573,7 @@ def retarget(
     gap_open_penalty,
     gap_extension_penalty,
     unspl_loc_ref,
+    require_exact_for_shiftable,
 ):
     target_seq, target_type, target_pos  = target.indel_seq, target.variant_type, target.pos
 
@@ -608,6 +609,7 @@ def retarget(
         if read_dict["low_qual_base_num"] < 6
         and not read_dict["is_dirty"]
         and not read_dict["is_end_dirty"]
+        and read_dict.get("is_worth_realn", True)
     ]
 
     if not non_refs:
@@ -697,7 +699,8 @@ def retarget(
                         mismatch_penalty,
                         gap_open_penalty,
                         gap_extension_penalty,
-                        unspl_loc_ref
+                        unspl_loc_ref,
+                        require_exact_for_shiftable,
                    )
         else:
             return None
@@ -719,7 +722,13 @@ def retarget(
         
         idx = candidate_seqs.index(best_seq)
         hit = u_candidates[idx]
-         
+        
+        # require exact match for shiftable indels 
+        if require_exact_for_shiftable:
+            if len(hit.generate_equivalents()) > 1 or len(target.generate_equivalents()) > 1:
+                if hit != target:
+                    return None
+        
         if abs(target.pos - hit.pos) < within:
 
             try:
@@ -766,7 +775,8 @@ def retarget(
                         mismatch_penalty,
                         gap_open_penalty,
                         gap_extension_penalty,
-                        unspl_loc_ref
+                        unspl_loc_ref,
+                        require_exact_for_shiftable
                     )
         else:
             return None

@@ -95,6 +95,7 @@ cdef class VariantAlignment:
         bint exclude_duplicates=True, 
         int retarget_search_window=30,
         float retarget_similarity_cutoff=0.7,
+        bint exact_match_for_shiftable=True,
         int mapping_quality_threshold=1,
         int downsample_threshold=1000,
         int base_quality_threshold=20,
@@ -103,6 +104,7 @@ cdef class VariantAlignment:
         int gap_open_penalty=3,
         int gap_extension_penalty=1,
         bint auto_adjust_extension_penalty=True,
+        bint no_realignment=False,
     ):
         
         self.target = target
@@ -125,6 +127,7 @@ cdef class VariantAlignment:
         self.exclude_duplicates = exclude_duplicates
         self.retarget_window = retarget_search_window
         self.retarget_cutoff = retarget_similarity_cutoff
+        self.exact_match_for_shiftable = exact_match_for_shiftable
         self.mapqthresh = mapping_quality_threshold
         self.downsamplethresh = downsample_threshold 
         self.basequalthresh = base_quality_threshold
@@ -133,6 +136,7 @@ cdef class VariantAlignment:
         self.gap_open_penalty = gap_open_penalty
         self.gap_extension_penalty = gap_extension_penalty
         self.auto_adjust_extension_penalty = auto_adjust_extension_penalty
+        self.no_realignment = no_realignment
         self.unspliced_local_reference = UnsplicedLocalReference(
                                             self.__target.chrom,
                                             self.__target.pos,
@@ -211,7 +215,7 @@ cdef class VariantAlignment:
             )
             
             self.is_spurious_overhang = False
-            if contig.failed:
+            if contig.failed and not self.no_realignment:
                 within = self.retarget_window
                 
                 grid = generate_grid(self.auto_adjust_extension_penalty, 
@@ -248,7 +252,8 @@ cdef class VariantAlignment:
                             self.match_score,
                             self.mismatch_penalty,
                             grid,
-                            self.unspliced_local_reference
+                            self.unspliced_local_reference,
+                            self.exact_match_for_shiftable,
                         )
                          
                         if res:
@@ -268,7 +273,8 @@ cdef class VariantAlignment:
                         self.match_score,
                         self.mismatch_penalty,
                         grid,
-                        self.unspliced_local_reference
+                        self.unspliced_local_reference,
+                        self.exact_match_for_shiftable,
                     )
                     
                     if res:
@@ -316,7 +322,7 @@ cdef class VariantAlignment:
                     return pileup, contig
         
         # soft-clip realn & SW realn
-        if contig.qc_passed:
+        if contig.qc_passed and not self.no_realignment:
             
             orig_contig = contig
             
@@ -344,7 +350,8 @@ cdef class VariantAlignment:
                        self.match_score,
                        self.mismatch_penalty,
                        grid,
-                       self.unspliced_local_reference
+                       self.unspliced_local_reference,
+                       self.exact_match_for_shiftable,
                    )
               
                if res:
@@ -972,6 +979,7 @@ def grid_search(
     mismatch_penalty,
     grid,
     unspl_loc_ref,
+    exact_match_for_shiftable,
 ):
     # grid = [(gap.open, gap.ext)]
     h = 0
@@ -989,6 +997,7 @@ def grid_search(
             grid[h][0],
             grid[h][1],
             unspl_loc_ref,
+            exact_match_for_shiftable,
         )
       
         if res:

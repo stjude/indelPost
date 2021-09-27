@@ -13,7 +13,7 @@ cdef class VariantAlignment:
     cdef int downsamplethresh, basequalthresh, match_score, _observed_pos
     cdef int mismatch_penalty, gap_open_penalty, gap_extension_penalty
     cdef float retarget_cutoff, __sample_factor,
-    cdef bint exclude_duplicates, auto_adjust_extension_penalty
+    cdef bint exclude_duplicates, exact_match_for_shiftable, auto_adjust_extension_penalty, no_realignment
     cdef list __pileup
     cdef readonly is_spurious_overhang
     cdef readonly Contig contig

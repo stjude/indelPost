@@ -4,15 +4,23 @@ import numpy as np
 import traceback
 from collections import OrderedDict
 
-from .utilities import most_common, get_gap_ptrn2, most_common_gap_ptrn, to_flat_list, merge_consecutive_gaps
+from .utilities import (
+    most_common,
+    get_gap_ptrn2,
+    most_common_gap_ptrn,
+    to_flat_list,
+    merge_consecutive_gaps,
+)
 
 cigar_ptrn = re.compile(r"[0-9]+[MIDNSHPX=]")
 
 
 def make_consensus(target, targetpileup, basequalthresh):
     expected_ptrn = most_common_gap_ptrn(targetpileup)
-    targetpileup = [read for read in targetpileup if expected_ptrn == get_gap_ptrn2(read)]
-    
+    targetpileup = [
+        read for read in targetpileup if expected_ptrn == get_gap_ptrn2(read)
+    ]
+
     target_pos, target_type, target_len = (
         target.pos,
         target.variant_type,
@@ -22,49 +30,49 @@ def make_consensus(target, targetpileup, basequalthresh):
     lt_indexed, rt_indexed, contributing_reads = [], [], []
     for read in targetpileup:
         target_pos = target_pos if read.get("target_right_shifted", 0) else target_pos
-        
+
         try:
             lt = index_bases(
-                    read["read_start"],
-                    target_pos,
-                    target_type,
-                    target_len,
-                    read["lt_cigar"],
-                    read["lt_flank"],
-                    read["lt_ref"],
-                    read["lt_qual"],
-                 )
+                read["read_start"],
+                target_pos,
+                target_type,
+                target_len,
+                read["lt_cigar"],
+                read["lt_flank"],
+                read["lt_ref"],
+                read["lt_qual"],
+            )
             rt = index_bases(
-                    read["read_start"],
-                    max(k for k, v in lt.items()),
-                    target_type,
-                    target_len,
-                    read["rt_cigar"],
-                    read["rt_flank"],
-                    read["rt_ref"],
-                    read["rt_qual"],
-                    left_padding=(
-                        read["lt_ref"][-1],
-                        read["lt_flank"][-1],
-                        read["lt_qual"][-1],
-                        target.indel_seq,
-                    ),
-                    left_flank=read["lt_flank"],
-                    left=False,
-                 )
+                read["read_start"],
+                max(k for k, v in lt.items()),
+                target_type,
+                target_len,
+                read["rt_cigar"],
+                read["rt_flank"],
+                read["rt_ref"],
+                read["rt_qual"],
+                left_padding=(
+                    read["lt_ref"][-1],
+                    read["lt_flank"][-1],
+                    read["lt_qual"][-1],
+                    target.indel_seq,
+                ),
+                left_flank=read["lt_flank"],
+                left=False,
+            )
             lt_indexed.append(lt)
             rt_indexed.append(rt)
             contributing_reads.append(read)
-        
+
         except:
-            #this is for debugging
-            #traceback.print_exc() 
+            # this is for debugging
+            # traceback.print_exc()
             pass
 
     if lt_indexed and rt_indexed:
         lt_consensus = consensus_data(lt_indexed, True, basequalthresh)
         rt_consensus = consensus_data(rt_indexed, False, basequalthresh)
-        
+
         return lt_consensus, rt_consensus, contributing_reads
 
 
@@ -82,10 +90,10 @@ def index_bases(
     left=True,
 ):
     indexedbases = {}
-    
+
     orig = cigar
     cigar = merge_consecutive_gaps(cigar)
-    
+
     if left:
         current_pos = read_pos
     else:
@@ -114,8 +122,8 @@ def index_bases(
                 )
                 current_pos += target_len + 1
         elif len(first_cigar) == 2:
-            #ins_first = "I" in first_cigar[0]
-            
+            # ins_first = "I" in first_cigar[0]
+
             del_len = sum(int(c[:-1]) for c in first_cigar if c[-1] == "D")
             ins_len = sum(int(c[:-1]) for c in first_cigar if c[-1] == "I")
 
@@ -130,7 +138,7 @@ def index_bases(
             elif target_type == "D":
                 indexedbases[current_pos] = (
                     ref_padding + target_seq,
-                    left_flank[-(ins_len+1):],
+                    left_flank[-(ins_len + 1) :],
                     qual_padding,
                 )
 
@@ -139,14 +147,14 @@ def index_bases(
         elif len(first_cigar) == 1 and "M" in first_cigar[0]:
             map_len = int(first_cigar[0][:-1])
             for i in range(map_len):
-                indexedbases[current_pos] = (ref[0], flank[0], qual[0])      
+                indexedbases[current_pos] = (ref[0], flank[0], qual[0])
                 ref = ref[1:]
                 flank = flank[1:]
                 qual = qual[1:]
                 current_pos += 1
 
         cigar = cigar[1:]
-        
+
     for c in cigar:
         # complex pattrn (I and D merged)
         if "I" in c and "D" in c:
@@ -167,7 +175,7 @@ def index_bases(
             )
 
             del_seq, ref = ref[:del_len], ref[del_len:]
-            
+
             indexedbases[current_pos - 1] = (
                 padding_ref + del_seq,
                 padding_ref + ins_seq,
@@ -177,20 +185,20 @@ def index_bases(
             current_pos += del_len
         else:
             event, event_len = c[-1], int(c[:-1])
-            
+
             if event in ("M", "S", "X", "="):
                 for i in range(event_len):
-                    
+
                     if ref and event != "S":
                         indexedbases[current_pos] = (ref[0], flank[0], qual[0])
                         ref = ref[1:]
                     else:
                         indexedbases[current_pos] = ("", flank[0], qual[0])
-                   
+
                     flank = flank[1:]
                     qual = qual[1:]
                     current_pos += 1
-                    
+
             elif event == "I":
                 padding_ref, padding_qual = (
                     indexedbases[current_pos - 1][0],
@@ -219,22 +227,22 @@ def index_bases(
                     padding_ref,
                     padding_qual,
                 )
-                
+
                 current_pos += event_len
 
             elif event == "N":
                 current_pos += event_len
-    
+
     return indexedbases
 
 
 def consensus_data(indexedbases_list, left, basequalthresh):
-    
+
     consensus_index = OrderedDict()
 
     skip_loci = []
     for locus in locus_list(indexedbases_list, left):
-        
+
         ref, consensus_base, consensus_score, coverage = get_consensus_base(
             indexedbases_list, locus, basequalthresh
         )
@@ -242,9 +250,9 @@ def consensus_data(indexedbases_list, left, basequalthresh):
         if len(ref) > len(consensus_base) and "N" not in consensus_base:
             del_len = len(ref) - len(consensus_base)
             skip_loci += [locus + i for i in range(1, del_len + 1)]
-            
+
         consensus_index[locus] = (ref, consensus_base, consensus_score, coverage)
-    
+
     for locus in skip_loci:
         if locus in consensus_index:
             del consensus_index[locus]
@@ -278,13 +286,13 @@ def consensus_data(indexedbases_list, left, basequalthresh):
 
         prev_locus = locus
         prev_ref = ref
-        
+
     if left:
         conseq = conseq[::-1]
         refseq = refseq[::-1]
         scores = scores[::-1]
         coverages = coverages[::-1]
-    
+
     return consensus_index, ref_end, refseq, conseq, scores, coverages
 
 
@@ -326,7 +334,7 @@ def get_consensus_base(indexedbases_list, locus, basequalthresh):
     consensus_score = pairs.count(consensus_pair) / len(pairs)
 
     ref, consensus_base = consensus_pair[0], consensus_pair[1]
-    
+
     if ref:
         if ref != consensus_base:
             if not consensus_base in hq_bases:
@@ -415,7 +423,7 @@ def is_compatible(query, subject, indel_type, partial_match=True):
         subject.rt_target_block_consensus_seq,
         subject.rt_target_block_consensus_scores,
     )
-    
+
     # check flanking sequences for similarity
     lt_len = min(len(query_lt_flank), len(subject_lt_flank))
     rt_len = min(len(query_rt_flank), len(subject_rt_flank))

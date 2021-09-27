@@ -3,7 +3,7 @@
 from .variant import Variant
 from indelpost.utilities cimport split
 from .utilities import split_cigar, get_local_reference, relative_aln_pos, most_common
-from .localn import make_aligner, align, findall_indels
+from .localn import make_aligner, align, findall_indels, findall_mismatches, is_worth_realn
 
 from indelpost.utilities cimport split
 
@@ -84,6 +84,8 @@ def is_target_by_normalization(read, target):
 
     # trivial case
     if read["is_reference_seq"]:
+        read["is_worth_realn"] = False
+        read["mismatches"] = []
         return read
 
     for indel in read[target.variant_type]:
@@ -112,6 +114,9 @@ def is_target_by_normalization(read, target):
             read["lt_cigar"], read["rt_cigar"] = split_cigar(
                 read["cigar_string"], pos, read["read_start"]
             )
+    
+    findall_mismatches(read)
+    read["is_worth_realn"] = is_worth_realn(read, target, qual_lim=23)
     
     return read
 
