@@ -72,6 +72,9 @@ cdef class VariantAlignment:
         re-targets to the indel sequence with a highest 
         `Ratcliff/Obershelp similarity score <https://docs.python.org/3/library/difflib.html#difflib.get_close_matches>`__ > cutoff (default 0.7).
    
+    exact_match_for_shiftable : bool
+        True to require exact (equivalent)  match for indels that are equivalently alignable by shifting the position (default True)
+    
     match_score : integer
         score (default 3) for matched bases in Smith-Waterman local alignment.
 
@@ -86,6 +89,9 @@ cdef class VariantAlignment:
 
     auto_adjust_extension_penalty : bool
         True (default) to auto-adjust the gap open and extend penalties to find the input indel by realignment.
+
+    no_realignment : bool
+        True to only analyzed gap-aligned indels (default False)
     """
     def __cinit__(
         self,
