@@ -19,24 +19,15 @@ pip install indelpost --no-binary indelpost --no-build-isolation
 ```
 
 ## Troubleshoot
-If you get:
+If you get something like:
 ```
-ValueError: pysam.libcalignedsegment.PileupColumn size changed, may indicate binary incompatibility. Expected 88 from C header, got 72 from PyObject
+... may indicate binary incompatibility. Expected 88 from C header, got 72 from PyObject
 ```
 try:
 ```
 pip uninstall cython pysam indelpost
 pip install cython pysam
 pip install indelpost --no-binary indelpost --no-build-isolation
-```
-
-If you do not have [wheel](https://pythonwheels.com/), you will get:
-```
-error: invalid command 'bdist_wheel'
-```
-then first install:
-```
-pip install wheel
 ```
 
 ## Reference
