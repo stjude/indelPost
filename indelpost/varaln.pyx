@@ -504,18 +504,20 @@ cdef class VariantAlignment:
             
 
     def count_alleles(
-        self, fwrv=False, by_fragment=False, estimated_count=False, quality_window=None, quality_threshold=None
+        self, fwrv=False, by_fragment=False, three_class=False, estimated_count=False, quality_window=None, quality_threshold=None
     ):
         """returns a `tuple <https://docs.python.org/3/library/stdtypes.html#tuple>`__ of
-        read counts:  (#ref reads, #alt reads).
+        read counts:  (#non_target reads, #target reads).
 
         Parameters
         ----------
             fwrv : bool
-                breaks down into the forward and reverse read counts.
-                ( (ref-fw, ref-rv), (alt-fw, alt-rv) ).
+                breaks down to the forward and reverse read counts.
+                ( (non_target-fw, non_target-rv), (target-fw, target-rv) ).
             by_fragment : bool
                 counts by fragment. Overlapping fw and rv reads are counted as one.
+            three_class : bool
+                breaks down to (reference, non_reference_non_target, target) counts. 
             estimated_count : bool
                 True to return estimated count when the coverage is higher than :attr:`~indelpost.VariantAlignment.downsample_threshold`.
             quality_window : integer
@@ -542,6 +544,10 @@ cdef class VariantAlignment:
                 if is_quality_read(read, pos, quality_window, quality_threshold)
             ]
 
+        if three_class:
+            for read in reads:
+                read["is_locally_ref"] = is_locally_ref(read, pos)
+        
         fw_target = [
             read["read_name"]
             for read in reads
@@ -573,6 +579,50 @@ cdef class VariantAlignment:
 
         est = self.__sample_factor if estimated_count else 1
 
+        if three_class:
+            fw_ref = [
+                read["read_name"]
+                for read in reads if read["is_locally_ref"] and not read["is_reverse"] and read["read_name"] in fw_non_target
+            ]
+            
+            fw_ref = set(fw_ref)
+            fw_non_ref_non_target = fw_non_target - fw_ref
+            
+            rv_ref = [
+                read["read_name"]
+                for read in reads if read["is_locally_ref"] and read["is_reverse"] and read["read_name"] in rv_non_target
+            ]
+            rv_ref = set(rv_ref)
+            rv_non_ref_non_target = rv_non_target - rv_ref 
+            
+            if fwrv:
+                return (
+                    (
+                        int(len(fw_ref) * est),
+                        int(len(rv_ref) * est),
+                    ),
+                    (   
+                        int(len(fw_non_ref_non_target) * est),
+                        int(len(rv_non_ref_non_target) * est),
+                    ),
+                    (
+                        int(len(fw_target) * est),
+                        int(len(rv_target) * est),
+                    ),
+                )
+                
+            else:
+                if by_fragment:
+                    fwrv_ref = len(fw_ref | rv_ref)
+                    fwrv_non_ref_non_target = len(fw_non_ref_non_target | rv_non_ref_non_target)
+                    fwrv_target = len(fw_target | rw_target)
+                else:
+                    fwrv_ref = len(fw_ref) + len(rv_ref)
+                    fwrv_non_ref_non_target =  len(fw_non_ref_non_target) + len(rv_non_ref_non_target)
+                    fwrv_target = len(fw_target) + len(rw_target)
+
+                return (int(fwrv_ref), int(fwrv_non_ref_non_target), int(fwrv_target))
+        
         if fwrv:
             return (
                 (
@@ -664,7 +714,7 @@ def is_quality_read(read, pos, qualitywindow, qualitythresh):
             read["read_qual"],
             read["cigar_string"],
             pos,
-            read["aln_start"],
+            read["read_start"],
             is_for_ref=False,
             reverse=False,
         )
@@ -676,15 +726,67 @@ def is_quality_read(read, pos, qualitywindow, qualitythresh):
         return lt_median > qualitythresh and rt_median > qualitythresh
 
 
+def is_locally_ref(read, pos):
+    if read["is_reference_seq"]:
+        return True
+    
+     
+    try:
+        lt_seq, rt_seq = read["lt_seq"], read["rt_seq"]
+    except:
+        lt_seq, rt_seq = split(read["read_seq"],
+            read["cigar_string"],
+            pos,
+            read["read_start"],
+            is_for_ref=False,
+            reverse=False,
+        )
+
+    try:
+        lt_ref, rt_ref = read["lt_ref"], read["rt_ref"]
+    except:
+        lt_ref, rt_ref = split(read["ref_seq"],
+            read["cigar_string"],
+            pos,
+            read["aln_start"],
+            is_for_ref=True,
+            reverse=False,
+        )
+    
+
+    
+    lt_seq_len = len(lt_seq)
+    lt_ref_len = len(lt_ref)
+    #clipped
+    if not lt_ref_len:
+        return False
+
+    lt_len = min(5, lt_seq_len, lt_ref_len)
+    
+    rt_seq_len = len(rt_seq)
+    rt_ref_len = len(rt_ref)
+    if not rt_ref_len:
+        return False
+
+    rt_len = min(5, rt_seq_len, rt_ref_len)
+
+    if lt_seq[-lt_len:] == lt_ref[-lt_len:] and rt_seq[:rt_len] == rt_ref[:rt_len]:
+        return True
+    else:
+        return False
+
+
 cdef bint count_as_non_target(dict read, int pos, int del_len, int margin):
     if read["is_target"]:
         return False
 
     cdef int aln_start = read["aln_start"]
     cdef int aln_end = read["aln_end"]
-    
      
     # undetermined reads
+    if read.get("undetermined", False):
+        return False
+    
     if read["is_covering"]:
         covering_subread = read["covering_subread"]
         if covering_subread[1] <= pos + margin:

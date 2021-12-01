@@ -281,13 +281,16 @@ def is_target_by_ssw(
                     target_indel.count_repeats(),
                    )
     
-    if target_covered:
+    if target_covered == 1:
         read["is_target"] = True
+        return read
+    elif target_covered == -1:
+        read["undetermined"] = True
         return read
     else:
         return read
 
-cdef bint is_covering_target(
+cdef int is_covering_target(
     str readname,
     str read_seq,
     str indel_seq,
@@ -334,42 +337,58 @@ cdef bint is_covering_target(
             if total_consumption > lt_consumption + mut_ref_mid_len:
                 lt_read = read_seq[read_aln_start : read_aln_start + lt_consumption]
                 mid_read = read_seq[read_aln_start + lt_consumption : read_aln_start + lt_consumption + mut_ref_mid_len]
-                rt_read = read_seq[read_aln_start + lt_consumption + mut_ref_mid_len : read_aln_end]
+                rt_read = read_seq[read_aln_start + lt_consumption + mut_ref_mid_len : read_aln_end + 1]
                 
                 lt_check = is_compatible_repeats(lt_read, repeat_unit, n_repeats, is_left=True)
                 rt_check = is_compatible_repeats(rt_read, repeat_unit, n_repeats, is_left=False)
                 
                 if lt_check and rt_check:
-                    return True
+                    #True
+                    return 1
                 else:
-                    return False
+                    #False (undetermined)
+                    return -1
             else:
-                # aligne from left and ended in inserted seq
-                if n_repeats:
-                    return False
+                ### abolish heuristic for reapeat
+                #if n_repeats:
+                #    return False
+                if is_rt_read_consumed:
+                        #True
+                        return 1
                 else:
-                    if is_rt_read_consumed:
-                        return True
+                    # aligned from left and ended in inserted seq
+                    rt_consumption = total_consumption - lt_consumption
+                    consumed_mid_seq = mut_ref_mid[:rt_consumption:]
+                     
+                    if consumed_mid_seq == read_seq[-rt_consumption:]:
+                        #True
+                        return 1
                     else:
-                        rt_consumption = total_consumption - lt_consumption
-                        if rt_consumption > 1:
-                            return True
-                        else:
-                            return False
+                        #False
+                        return 0
         else:
             # no left side alignment
-
-            if n_repeats:
-                return False 
+    
+            ### abolish heuristic for repeat 
+            # instead check the exact match
+            #if n_repeats:
+            #    return False 
 
             if is_lt_read_consumed:
-                return True
+                #True
+                return 1
             else:
+                # aligned from right and ended in inserted seq
                 lt_consumption = mut_ref_lt_len + mut_ref_mid_len - ref_aln_start
-                if lt_consumption > 1:
-                    return True
+                consumed_mid_seq = mut_ref_mid[-lt_consumption:]
+
+                # require exact match
+                if consumed_mid_seq == read_seq[:lt_consumption]:
+                    #True
+                    return 1
                 else:
-                    return False   
+                    #False
+                    return 0   
                 
     else:
         lt_consumption = mut_ref_lt_len - ref_aln_start
@@ -384,24 +403,31 @@ cdef bint is_covering_target(
         if lt_check and rt_check:
             pass
         else:
-            return False
+            #False (undetermined)
+            return -1
 
         if lt_consumption <= rt_consumption:
             if is_lt_read_consumed:
-                return True
+                #True
+                return 1
             else:
                 if lt_consumption > 2:
-                    return True
+                    #True
+                    return 1
                 else:
-                    return False
+                    #False
+                    return 0
         else:
             if is_rt_read_consumed:
-                return True
+                #True
+                return 1
             else:
                 if rt_consumption > 2:
-                    return True
+                    #True
+                    return 1
                 else:
-                    return False
+                    #False
+                    return 0
 
 
 def is_compatible_repeats(seq, repeat_unit, expected_n_repeats, is_left):
