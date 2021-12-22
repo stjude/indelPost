@@ -92,6 +92,7 @@ def is_target_by_normalization(read, target):
         if target == indel[-1]:
             
             pos = target.pos
+            
             if avoid_left_aln(read, target):
                 pos = indel[0] # pos observed in alignment
                 read["observed_pos"] = pos
@@ -126,7 +127,10 @@ def avoid_left_aln(read, target):
     
     pos = target.pos #normalized
     if "N" in read["cigar_string"]:
-        return pos < read["covering_subread"][0]
+        if  read["covering_subread"]:
+            return pos < read["covering_subread"][0]
+        else:
+            return True
 
     return False
              
