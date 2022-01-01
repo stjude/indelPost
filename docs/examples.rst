@@ -257,7 +257,7 @@ Annotate complex indels for the table::
         v = Variant(row["CHROM"], row["POS"], row["REF"], row["ALT"], reference)
         valn = VariantAlignment(v, bam)
         
-        v_cplx = v.phase(how="complex") # v_cplx will be v if v is not a part of complex event
+        v_cplx = valn.phase(how="complex") # v_cplx will be v if v is not a part of complex event
 
         return v_cplx.pos, v_cplx.ref. v_cplx.alt
         
