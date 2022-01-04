@@ -259,7 +259,7 @@ Annotate complex indels for the table::
         
         v_cplx = valn.phase(how="complex") # v_cplx will be v if v is not a part of complex event
 
-        return v_cplx.pos, v_cplx.ref. v_cplx.alt
+        return v_cplx.pos, v_cplx.ref, v_cplx.alt
         
     df = pd.read_csv("simple_indels.tab", sep="\t")
     
