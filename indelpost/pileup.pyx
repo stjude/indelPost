@@ -78,14 +78,19 @@ cdef tuple make_pileup(
         _chrom = chrom
     
     pileup = fetch_reads(_chrom, pos, bam, ref_len, window, exclude_duplicates)
-    orig_depth = bam.count(_chrom, pos - 1, pos)
+    call_back = "all" if exclude_duplicates else "nofilter"
+    orig_depth = bam.count(_chrom, pos - 1, pos, read_callback=call_back)
     orig_read_num = len(pileup)
       
     # downsampling
     if orig_depth > downsamplethresh:
         random.seed(123)
-        pileup = random.sample(pileup,  int(orig_read_num * (downsamplethresh / orig_depth)))
-        sample_factor = orig_read_num / len(pileup)
+        n_sample = int(orig_read_num * (downsamplethresh / orig_depth))
+        if n_sample:
+            pileup = random.sample(pileup,  n_sample)
+            sample_factor = orig_read_num / len(pileup)
+        else:
+            sample_factor = 1
     else:
         sample_factor = 1.0
 
