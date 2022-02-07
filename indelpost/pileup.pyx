@@ -86,11 +86,19 @@ cdef tuple make_pileup(
     if orig_depth > downsamplethresh:
         random.seed(123)
         n_sample = int(orig_read_num * (downsamplethresh / orig_depth))
-        if n_sample:
+        
+        ### lower bounded by downsample thresh / 2
+        ### to prevent over-downsampling
+        ### example: orig_depth = 1197119 (exclude_duplicates=False)
+        ###          orig_read_num = 1962
+        ###          downsamplethresh = 1000
+        ###          n_sample -> 1
+        ###          over downsampled.
+        if n_sample >= downsamplethresh / 2 > 0:
             pileup = random.sample(pileup,  n_sample)
             sample_factor = orig_read_num / len(pileup)
         else:
-            sample_factor = 1
+            sample_factor = 1.0
     else:
         sample_factor = 1.0
 
