@@ -10,6 +10,7 @@ users write their own scripts to solve alignment-sensitive problems such as:
 * construct a complex indel from a simple indel by read-based phasing    
 * extract reads supporting the target indel from BAM file
 * pull variant records matching the target indel from VCF file
+* genotyping indels (the alleles may be aligned differently in the target BAM file)
 
 Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
 
