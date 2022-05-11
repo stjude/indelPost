@@ -24,6 +24,10 @@ If you get something like:
 ```
 ... may indicate binary incompatibility. Expected 88 from C header, got 72 from PyObject
 ```
+or
+```
+AttributeError: module 'pysam.libcalignmentfile' has no attribute 'IteratorColumnAll'
+```
 try:
 ```
 pip uninstall cython pysam indelpost
