@@ -264,7 +264,7 @@ def is_target_by_ssw(
     mut_aln_read_start = mut_aln.read_start
     mut_aln_read_end = mut_aln.read_end
     mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
-
+    
     target_covered = is_covering_target(
                     read["read_name"],
                     read_seq,
@@ -322,7 +322,7 @@ cdef int is_covering_target(
     cdef bint is_rt_indel_end_reached
     cdef bint is_lt_read_consumed = (read_aln_start == 0)
     cdef bint is_rt_read_consumed = (read_aln_end == read_seq_len - 1)
-
+    
     # not covering indel 
     if ref_aln_end < mut_ref_lt_len:
         return False

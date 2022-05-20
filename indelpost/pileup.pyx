@@ -590,14 +590,22 @@ def retarget(
 ):
     target_seq, target_type, target_pos  = target.indel_seq, target.variant_type, target.pos
 
-    non_refs = [
-        read_dict
-        for read_dict in pileup
-        if not read_dict["is_reference_seq"]
-        and read_dict["is_covering"]
-        and read_dict["mapq"] > mapq4retarget
-    ]
     
+    if target.is_ins:
+        non_refs = [
+            read_dict
+            for read_dict in pileup
+            if not read_dict["is_reference_seq"]
+            and read_dict["is_covering"]
+            and read_dict["mapq"] > mapq4retarget
+        ]
+    else:
+        non_refs = [
+            read_dict
+            for read_dict in pileup
+            if not read_dict["is_reference_seq"]
+            and read_dict["mapq"] > mapq4retarget
+        ]
     
     if not non_refs:
         return None
@@ -682,9 +690,9 @@ def retarget(
                 var = Variant(target.chrom, indel["pos"], ref, alt, target.reference, skip_validation=True)
                  
                 # non-target indel found in read end -> do not consider
-                read_end_thresh = len(read["read_seq"]) / 30
+                read_end_thresh = max(len(read["read_seq"]) / 30, 3)
                 if var.pos - read["read_start"] <= read_end_thresh or read["read_end"] - var.pos <= read_end_thresh:
-                    if var == target or var.pos not in complex_positions:
+                    if var == target or (complex_positions and var.pos not in complex_positions):
                         candidates.append(var)
                         candidate_reads.append(read)
                         candidate_ref_seqs.append(ref_seq)
@@ -771,6 +779,11 @@ def retarget(
             candidate_ref_starts = [candidate_ref_starts[i] for i in idx]
             candidate_aligners = [candidate_aligners[i] for i in idx]
 
+            for k in candidate_reads:
+                if k["aln_end"] == 29944575:
+                    print(k)
+            
+            
             return candidate, candidate_reads, match_score, candidate_ref_seqs, candidate_ref_starts, candidate_aligners
         else:
             return None

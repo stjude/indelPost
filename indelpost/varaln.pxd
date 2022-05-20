@@ -19,4 +19,4 @@ cdef class VariantAlignment:
     cdef readonly Contig contig
     cdef readonly UnsplicedLocalReference unspliced_local_reference
 
-    cdef __parse_pileup(self, Contig contig=*, bint retargeted=*)
+    cdef __parse_pileup(self, Contig contig=*, bint retargeted=*, bint skip_read_end_check=*)

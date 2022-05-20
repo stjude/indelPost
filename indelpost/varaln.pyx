@@ -19,8 +19,14 @@ from .localn import find_by_smith_waterman_realn, make_aligner
 
 from .alleles import phase_nearby_variants
 from .contig import compare_contigs
-from .utilities import get_local_reference, relative_aln_pos, split_cigar
-
+from .utilities import (
+    get_local_reference, 
+    relative_aln_pos, 
+    split_cigar, 
+    most_common_gap_ptrn,
+    get_gap_ptrn2,
+    most_common
+)
 from indelpost.pileup cimport make_pileup
 from indelpost.utilities cimport split
 from indelpost.contig cimport Contig, FailedContig 
@@ -152,7 +158,7 @@ cdef class VariantAlignment:
                                          )
         self.__pileup, self.contig = self.__parse_pileup()
     
-    cdef __parse_pileup(self, Contig contig=None, bint retargeted=False):
+    cdef __parse_pileup(self, Contig contig=None, bint retargeted=False, bint skip_read_end_check=False):
         """Dictize reads for target indel and make target indel template by consensus
 
         bam (pysam.AlignmentFile)
@@ -178,7 +184,13 @@ cdef class VariantAlignment:
                 basequalthresh=self.basequalthresh,
             )
             
-            self.__target, pileup, exptension_penalty_used, self._observed_pos = find_by_normalization(
+            (
+            self.__target, 
+            pileup, 
+            exptension_penalty_used, 
+            self._observed_pos, 
+            read_end_evidence_only
+            ) = find_by_normalization(
                 self.__target,
                 pileup,
                 self.window,
@@ -188,6 +200,9 @@ cdef class VariantAlignment:
                 self.gap_extension_penalty,
                 self.basequalthresh,
             )
+            
+            if skip_read_end_check:
+                read_end_evidence_only = False
             
             if self.target != self.__target:
                     self.__target, pileup = update_pileup(
@@ -327,6 +342,15 @@ cdef class VariantAlignment:
                 else:
                     return pileup, contig
         
+        #_target = [read for read in pileup if read["is_target"]]
+        #_nontarget = [read for read in pileup if not read["is_target"]]
+        #_target = sorted(_target, key=partial(centrality, target_pos=self.__target.pos))
+        #_nontarget = [read for read in pileup if not read["is_target"]]
+        #_nontarget = sorted(_nontarget, key=partial(centrality, target_pos=self.__target.pos))
+        
+        #print(_target[0])
+        #print(_nontarget[0])
+
         # soft-clip realn & SW realn
         if contig.qc_passed and not self.no_realignment:
             
@@ -388,6 +412,10 @@ cdef class VariantAlignment:
             if self.__target.count_repeats() == 0:
                 pileup = find_by_softclip_split(self.__target, contig, pileup)
             
+            
+            if read_end_evidence_only:
+                target_pileup = [read for read in pileup if read["is_target"]]
+            
             pileup = find_by_smith_waterman_realn(
                 self.__target,
                 contig,
@@ -399,6 +427,21 @@ cdef class VariantAlignment:
                 self.basequalthresh
             )
             
+            if read_end_evidence_only:
+                newly_identified = [read for read in pileup if read["is_target"] and not read in target_pileup]
+                expected_ptrn = most_common_gap_ptrn(newly_identified)
+                
+                indels = [] 
+                contig_seq = contig.get_contig_seq()
+                alinger = make_aligner(contig_seq, self.match_score, self.mismatch_penalty)
+                for new_one in newly_identified:
+                    if "N" not in new_one["cigar_string"] and is_perfect_match(alinger, contig_seq, new_one["read_seq"]):
+                        indels += [i[-1] for i in new_one["I"]] + [d[-1] for d in new_one["D"]]
+                
+                if indels:        
+                    self.__target = most_common(indels)
+                    return self.__parse_pileup(contig=None, retargeted=False, skip_read_end_check=True)
+          
             contig = Contig(
                 self.__target,
                 preprocess_for_contig_construction(
@@ -810,7 +853,6 @@ def centrality(read, target_pos):
     relative_pos = relative_aln_pos(read["ref_seq"], read["cigar_list"], read["aln_start"], target_pos)
     return abs(0.5 - relative_pos)
 
-
 cdef list preprocess_for_contig_construction(
     Variant target,
     Variant orig_target,
@@ -1153,4 +1195,15 @@ def grid_search(
 
         return candidate, updated_reads, gap_open_penalty, gap_extension_penalty
     else:
-        return None                           
+        return None
+        
+        
+def is_perfect_match(aligner, contig_seq, read_seq):
+    aligner.setRead(read_seq)
+    _aln = aligner.align(gap_open=len(read_seq), gap_extension=len(read_seq))
+    _contig = contig_seq[_aln.reference_start : _aln.reference_end]
+    _read = read_seq[_aln.read_start : _aln.read_end]
+
+    return _contig == _read
+
+                               

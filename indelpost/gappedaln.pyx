@@ -34,12 +34,18 @@ def find_by_normalization(
         pileup = [is_target_by_normalization(read, target) for read in pileup]
         _pos = [read.get("observed_pos", pos) for read in pileup if read["is_target"]]
         pos = most_common(_pos) if _pos else pos 
+        are_read_ends = [read.get("is_read_end", False) for read in pileup if read["is_target"]]
+        if are_read_ends:
+            read_end_evidence_only = all(are_read_ends)
+        else:
+            read_end_evidence_only = False
     else:
         is_single = (target.variant_type == "S")
         alt_bases = target.alt
         pileup = [is_substitute_target(read, pos, alt_bases, is_single) for read in pileup]
+        read_end_evidence_only = False
     
-    return target, pileup, gap_extension_penalty, pos
+    return target, pileup, gap_extension_penalty, pos, read_end_evidence_only
 
     ##target, extension_penalty_used = seek_larger_gapped_aln(
     #    target,
@@ -115,7 +121,12 @@ def is_target_by_normalization(read, target):
             read["lt_cigar"], read["rt_cigar"] = split_cigar(
                 read["cigar_string"], pos, read["read_start"]
             )
-    
+
+            if min(len(read["lt_ref"]), len(read["rt_ref"])) / len(read["read_seq"]) < 0.15 or "H" in read["cigar_string"]:
+                read["is_read_end"] = True
+            else:
+                read["is_read_end"] = False
+   
     findall_mismatches(read)
     read["is_worth_realn"] = is_worth_realn(read, target, qual_lim=23)
     
