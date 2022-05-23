@@ -7,7 +7,7 @@ from indelpost.contig cimport Contig
 from indelpost.local_reference cimport UnsplicedLocalReference
 
 cdef class VariantAlignment:
-    cdef Variant target, __target
+    cdef Variant target, __target, second_target
     cdef readonly AlignmentFile bam
     cdef int window, retarget_window, mapqthresh
     cdef int downsamplethresh, basequalthresh, match_score, _observed_pos
@@ -15,7 +15,7 @@ cdef class VariantAlignment:
     cdef float retarget_cutoff, __sample_factor,
     cdef bint exclude_duplicates, exact_match_for_shiftable, auto_adjust_extension_penalty, no_realignment
     cdef list __pileup
-    cdef readonly is_spurious_overhang
+    cdef readonly is_spurious_overhang, is_complex_input
     cdef readonly Contig contig
     cdef readonly UnsplicedLocalReference unspliced_local_reference
 

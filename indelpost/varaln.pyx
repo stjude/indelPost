@@ -119,18 +119,26 @@ cdef class VariantAlignment:
         bint no_realignment=False,
     ):
         
-        self.target = target
-        
+        self.target, second_target = target, target
+         
+        is_complex_input = False 
         if not target.is_non_complex_indel() and target.is_indel:
-            
+            is_complex_input = True
+
             if auto_adjust_extension_penalty:
                 decomposed_variants = target.decompose_complex_variant(match_score, mismatch_penalty)
             else:
                 decomposed_variants = target.decompose_complex_variant(match_score, mismatch_penalty, gap_open_penalty, gap_extension_penalty)
             
             decomposed_indels = [i for i in decomposed_variants if i.is_indel]
-            self.__target = max(decomposed_indels, key=lambda l : len(l.indel_seq))
+            decomposed_indels.sort(key=lambda x : len(x.indel_seq))   
+            self.__target = decomposed_indels[-1]
             self.target = self.__target
+            if len(decomposed_indels) > 1:
+                second_target = decomposed_indels[-2]
+            
+            #self.__target = max(decomposed_indels, key=lambda l : len(l.indel_seq))
+            #self.target = self.__target
         else:
             self.__target = target.normalize()
 
@@ -149,6 +157,8 @@ cdef class VariantAlignment:
         self.gap_extension_penalty = gap_extension_penalty
         self.auto_adjust_extension_penalty = auto_adjust_extension_penalty
         self.no_realignment = no_realignment
+        self.is_complex_input = is_complex_input
+        self.second_target = second_target
         self.unspliced_local_reference = UnsplicedLocalReference(
                                             self.__target.chrom,
                                             self.__target.pos,
@@ -168,6 +178,8 @@ cdef class VariantAlignment:
         """
 
         cdef list pileup
+
+        read_end_evidence_only = False
         
         # equivalence search
         if retargeted:
@@ -184,8 +196,6 @@ cdef class VariantAlignment:
                 basequalthresh=self.basequalthresh,
             )
             
-            read_end_evidence_only = False
-
             (
             self.__target, 
             pileup, 
@@ -342,7 +352,16 @@ cdef class VariantAlignment:
 
                 # no target in this pileup
                 else:
-                    return pileup, contig
+                    if self.is_complex_input:
+                        try:
+                            self.__target = self.second_target
+                            self.target = self.second_target
+                            self.is_complex_input = False
+                            return self.__parse_pileup(contig=None, retargeted=False, skip_read_end_check=True)
+                        except:
+                             pileup, contig
+                    else:
+                        return pileup, contig
         
         #_target = [read for read in pileup if read["is_target"]]
         #_nontarget = [read for read in pileup if not read["is_target"]]
@@ -431,18 +450,24 @@ cdef class VariantAlignment:
             
             if read_end_evidence_only:
                 newly_identified = [read for read in pileup if read["is_target"] and not read in target_pileup]
-                expected_ptrn = most_common_gap_ptrn(newly_identified)
+                if newly_identified:
+                    expected_ptrn = most_common_gap_ptrn(newly_identified)
                 
-                indels = [] 
-                contig_seq = contig.get_contig_seq()
-                alinger = make_aligner(contig_seq, self.match_score, self.mismatch_penalty)
-                for new_one in newly_identified:
-                    if "N" not in new_one["cigar_string"] and is_perfect_match(alinger, contig_seq, new_one["read_seq"]):
-                        indels += [i[-1] for i in new_one["I"]] + [d[-1] for d in new_one["D"]]
+                    indels = [] 
+                    contig_seq = contig.get_contig_seq()
+                    alinger = make_aligner(contig_seq, self.match_score, self.mismatch_penalty)
+                    for new_one in newly_identified:
+                        if "N" not in new_one["cigar_string"] and is_perfect_match(alinger, contig_seq, new_one["read_seq"]):
+                            indels += [i[-1] for i in new_one["I"]] + [d[-1] for d in new_one["D"]]
                 
-                if indels:        
-                    self.__target = most_common(indels)
-                    return self.__parse_pileup(contig=None, retargeted=False, skip_read_end_check=True)
+                    if indels:        
+                        try:
+                            self.__target = most_common(indels)
+                        except:
+                            target_pos = self.__target.pos
+                            indels.sort(key=lambda x : abs(x.pos - target_pos))
+                        
+                        return self.__parse_pileup(contig=None, retargeted=False, skip_read_end_check=True)
           
             contig = Contig(
                 self.__target,
