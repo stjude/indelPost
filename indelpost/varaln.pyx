@@ -184,6 +184,8 @@ cdef class VariantAlignment:
                 basequalthresh=self.basequalthresh,
             )
             
+            read_end_evidence_only = False
+
             (
             self.__target, 
             pileup, 

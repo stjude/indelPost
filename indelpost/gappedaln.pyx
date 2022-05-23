@@ -34,7 +34,7 @@ def find_by_normalization(
         pileup = [is_target_by_normalization(read, target) for read in pileup]
         _pos = [read.get("observed_pos", pos) for read in pileup if read["is_target"]]
         pos = most_common(_pos) if _pos else pos 
-        are_read_ends = [read.get("is_read_end", False) for read in pileup if read["is_target"]]
+        are_read_ends = [read.get("is_read_end", False) for read in pileup if read["is_target"] and not read["is_dirty"]]
         if are_read_ends:
             read_end_evidence_only = all(are_read_ends)
         else:
