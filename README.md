@@ -20,15 +20,15 @@ pip install indelpost --no-binary indelpost --no-build-isolation
 ```
 
 ## Troubleshoot
-If you have installation errors related to [ssw-py] (https://github.com/Wyss/ssw-py),
+If you have installation errors related to [ssw-py](https://github.com/Wyss/ssw-py),
 try installing separately by:
 ```
 pip install ssw-py
 ```
 or
-[from source](https://github.com/stjude/indelPost/issues/2#issuecomment-1121163296)
+[from source](https://github.com/stjude/indelPost/issues/2#issuecomment-1121163296)<br />
 or
-[from_tar](https://github.com/stjude/indelPost/issues/2#issuecomment-1122645068) 
+[from_tar](https://github.com/stjude/indelPost/issues/2#issuecomment-1122645068).<br />  
 
 If you get something like:
 ```
