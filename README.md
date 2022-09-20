@@ -28,7 +28,7 @@ pip install ssw-py
 or
 [from source](https://github.com/stjude/indelPost/issues/2#issuecomment-1121163296)<br />
 or
-[from_tar](https://github.com/stjude/indelPost/issues/2#issuecomment-1122645068).<br />  
+[from tar](https://github.com/stjude/indelPost/issues/2#issuecomment-1122645068).<br />  
 
 If you get something like:
 ```
