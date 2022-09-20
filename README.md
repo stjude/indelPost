@@ -20,6 +20,16 @@ pip install indelpost --no-binary indelpost --no-build-isolation
 ```
 
 ## Troubleshoot
+If you have installation errors related to [ssw-py] (https://github.com/Wyss/ssw-py),
+try installing separately by:
+```
+pip install ssw-py
+```
+or
+[from source](https://github.com/stjude/indelPost/issues/2#issuecomment-1121163296)
+or
+[from_tar](https://github.com/stjude/indelPost/issues/2#issuecomment-1122645068) 
+
 If you get something like:
 ```
 ... may indicate binary incompatibility. Expected 88 from C header, got 72 from PyObject

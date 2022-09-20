@@ -244,7 +244,7 @@ cdef class Contig:
             if v[1] and v[0]:
                 data.append((k, (v[0], v[1])))
 
-        caln = ContigAlignment(chrom=self.target.chrom, aln=data, spliced_intervals=self._get_splice_patterns())
+        caln = ContigAlignment(chrom=self.target.chrom, aln=OrderedDict(data), spliced_intervals=self._get_splice_patterns())
         
         return caln
 

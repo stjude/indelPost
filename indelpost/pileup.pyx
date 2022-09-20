@@ -779,11 +779,6 @@ def retarget(
             candidate_ref_starts = [candidate_ref_starts[i] for i in idx]
             candidate_aligners = [candidate_aligners[i] for i in idx]
 
-            for k in candidate_reads:
-                if k["aln_end"] == 29944575:
-                    print(k)
-            
-            
             return candidate, candidate_reads, match_score, candidate_ref_seqs, candidate_ref_starts, candidate_aligners
         else:
             return None
