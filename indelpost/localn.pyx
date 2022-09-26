@@ -2,7 +2,7 @@
 
 import re
 import numpy as np
-from ssw import SSW
+from .sswpy import SSW
 
 from .consensus import is_compatible
 from .utilities import get_mapped_subreads, get_end_pos, make_insertion_first, to_minimal_repeat_unit
@@ -29,7 +29,7 @@ def find_by_smith_waterman_realn(
         target_indel (Variant)
         template (dict): indel template
         pileup (list): list of dictized reads (dict)
-        mapq (int): minimum mapping quality 
+        mapq (int): minimum mapping quality
     Returns:
         pileup (list): annotated pileup
     """
@@ -38,10 +38,10 @@ def find_by_smith_waterman_realn(
     mut_ref_lt, mut_ref_mid, mut_ref_rt = contig.get_contig_seq(split=True)
     ref_ref = contig.get_reference_seq()
     mut_ref = mut_ref_lt + mut_ref_mid + mut_ref_rt
-    
+
     mut_aligner = make_aligner(mut_ref, match_score, mismatch_penalty)
     ref_aligner = make_aligner(ref_ref, match_score, mismatch_penalty)
-    
+
     pileup = [findall_mismatches(read) for read in pileup]
 
     pileup = [
@@ -118,7 +118,7 @@ def findall_mismatches(read, end_trim=0):
             is_for_ref=True,
             reverse=False,
         )
-        
+
         mapped_seq = lt_seq[-1] + rt_seq[: span - 1]
         mapped_qual = [lt_qual[-1]] + list(rt_qual[: span - 1])
         mapped_ref = lt_ref[-1] + rt_ref[: span - 1]
@@ -176,7 +176,7 @@ def is_worth_realn(read, target_indel, qual_lim=23):
         for var in read["mismatches"]
         if covering_start <= var[0] <= covering_end and var[3] > qual_lim
     ]
-    
+
     shiftable_pos = [v.pos for v in target_indel.generate_equivalents()]
     lt_pos, rt_pos = min(shiftable_pos), max(shiftable_pos)
 
@@ -192,7 +192,7 @@ def is_worth_realn(read, target_indel, qual_lim=23):
                 rt_end_read = read["read_seq"][-(read["aln_end"] - lt_pos) :]
                 rt_end_ref = read["ref_seq"][-(read["aln_end"] - lt_pos) :]
                 if rt_end_read == rt_end_ref:
-                    return False  
+                    return False
 
 
     if mismatches:
@@ -202,7 +202,7 @@ def is_worth_realn(read, target_indel, qual_lim=23):
         else:
             rt_most_pos = max(var[0] for var in mismatches)
             with_end_mismatches = abs(rt_most_pos - read["aln_end"]) < 4
-        
+
         if with_end_mismatches:
             return True
         else:
@@ -217,7 +217,7 @@ def is_worth_realn(read, target_indel, qual_lim=23):
 
     if indels:
         return True
-    
+
     return False
 
 def is_target_by_ssw(
@@ -243,7 +243,7 @@ def is_target_by_ssw(
     # already found
     if read["is_target"]:
         return read
-    
+
     if read["is_reference_seq"] or read["mapq"] <= mapq_lim or not is_worth_realn(read, target_indel):
         read["is_target"] = False
         return read
@@ -253,18 +253,18 @@ def is_target_by_ssw(
     ref_aln = align(ref_aligner, read_seq, gap_open_penalty, gap_extension_penalty)
     # forced to align by setting gap_open_penalty=len(read_seq)
     mut_aln = align(mut_aligner, read_seq, len(read_seq), gap_extension_penalty)
-    
+
     if mut_aln.optimal_score <= ref_aln.optimal_score:
         read["is_target"] = False
         return read
-    
+
     mut_aln_cigar = mut_aln.CIGAR
     mut_aln_ref_start = mut_aln.reference_start
     mut_aln_ref_end = mut_aln.reference_end
     mut_aln_read_start = mut_aln.read_start
     mut_aln_read_end = mut_aln.read_end
     mut_cigar_list = cigar_ptrn.findall(mut_aln.CIGAR)
-    
+
     target_covered = is_covering_target(
                     read["read_name"],
                     read_seq,
@@ -273,14 +273,14 @@ def is_target_by_ssw(
                     mut_ref_mid,
                     mut_ref_rt,
                     mut_aln_cigar,
-                    len(read_seq), 
+                    len(read_seq),
                     mut_aln_ref_start,
                     mut_aln_ref_end,
                     mut_aln_read_start,
                     mut_aln_read_end,
                     target_indel.count_repeats(),
                    )
-    
+
     if target_covered == 1:
         read["is_target"] = True
         return read
@@ -298,7 +298,7 @@ cdef int is_covering_target(
     str mut_ref_mid,
     str mut_ref_rt,
     str mut_aln_cigar,
-    int read_seq_len, 
+    int read_seq_len,
     int ref_aln_start,
     int ref_aln_end,
     int read_aln_start,
@@ -306,10 +306,10 @@ cdef int is_covering_target(
     int n_repeats,
 ):
     cdef list mut_cigar_list = cigar_ptrn.findall(mut_aln_cigar)
-    
+
     if len(mut_cigar_list) > 1:
         return False
-    
+
     cdef str repeat_unit = to_minimal_repeat_unit(indel_seq)
     cdef int mapped_len = int(mut_cigar_list[0][:-1])
     cdef int mut_ref_lt_len = len(mut_ref_lt)
@@ -318,17 +318,17 @@ cdef int is_covering_target(
     cdef int lt_consumption
     cdef int rt_consumption
     cdef int total_consumption = read_aln_end - read_aln_start + 1
-    cdef bint is_lt_indel_end_reached 
+    cdef bint is_lt_indel_end_reached
     cdef bint is_rt_indel_end_reached
     cdef bint is_lt_read_consumed = (read_aln_start == 0)
     cdef bint is_rt_read_consumed = (read_aln_end == read_seq_len - 1)
-    
-    # not covering indel 
+
+    # not covering indel
     if ref_aln_end < mut_ref_lt_len:
         return False
     elif mut_ref_lt_len + mut_ref_mid_len <= ref_aln_start:
-        return False  
-    
+        return False
+
     # ins
     if mut_ref_mid_len:
         if ref_aln_start < mut_ref_lt_len:
@@ -338,10 +338,10 @@ cdef int is_covering_target(
                 lt_read = read_seq[read_aln_start : read_aln_start + lt_consumption]
                 mid_read = read_seq[read_aln_start + lt_consumption : read_aln_start + lt_consumption + mut_ref_mid_len]
                 rt_read = read_seq[read_aln_start + lt_consumption + mut_ref_mid_len : read_aln_end + 1]
-                
+
                 lt_check = is_compatible_repeats(lt_read, repeat_unit, n_repeats, is_left=True)
                 rt_check = is_compatible_repeats(rt_read, repeat_unit, n_repeats, is_left=False)
-                
+
                 if lt_check and rt_check:
                     #True
                     return 1
@@ -359,7 +359,7 @@ cdef int is_covering_target(
                     # aligned from left and ended in inserted seq
                     rt_consumption = total_consumption - lt_consumption
                     consumed_mid_seq = mut_ref_mid[:rt_consumption:]
-                     
+
                     if consumed_mid_seq == read_seq[-rt_consumption:]:
                         #True
                         return 1
@@ -368,11 +368,11 @@ cdef int is_covering_target(
                         return 0
         else:
             # no left side alignment
-    
-            ### abolish heuristic for repeat 
+
+            ### abolish heuristic for repeat
             # instead check the exact match
             #if n_repeats:
-            #    return False 
+            #    return False
 
             if is_lt_read_consumed:
                 #True
@@ -388,18 +388,18 @@ cdef int is_covering_target(
                     return 1
                 else:
                     #False
-                    return 0   
-                
+                    return 0
+
     else:
         lt_consumption = mut_ref_lt_len - ref_aln_start
         rt_consumption = total_consumption - lt_consumption
-        
+
         lt_read = read_seq[read_aln_start : read_aln_start + lt_consumption]
         rt_read = read_seq[read_aln_start + lt_consumption  : read_aln_end]
-        
+
         lt_check = is_compatible_repeats(lt_read, repeat_unit, n_repeats, is_left=True)
         rt_check = is_compatible_repeats(rt_read, repeat_unit, n_repeats, is_left=False)
-        
+
         if lt_check and rt_check:
             pass
         else:
@@ -432,12 +432,12 @@ cdef int is_covering_target(
 
 def is_compatible_repeats(seq, repeat_unit, expected_n_repeats, is_left):
     unit_len = len(repeat_unit)
-    
-    
+
+
     if is_left:
         seq = seq[::-1]
         repeat_unit = repeat_unit[::-1]
-    
+
     cnt = 0
     is_done = False
     while not is_done:
@@ -474,7 +474,7 @@ def align(aligner, read_seq, gap_open_penalty, gap_extension_penalty):
 
 def parse_read_by_mut_aln(mut_aln, contig, read, indel_type):
     """Decompose read based on the SSW alignment result for evaluation
-    
+
     Args:
         mut_aln (named tuple): Alignment(CIGAR, optimal_score, sub_optimal_score, reference_start, reference_end, read_start, read_end)
         template (dict): indel template
@@ -546,7 +546,7 @@ def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, report_snvs=False
     read_idx = ref_aln.read_start
 
     lt_clipped = read_seq[:read_idx]
-    
+
     indels, snvs = [], []
 
     for token in cigar_ptrn.findall(make_insertion_first(ref_aln.CIGAR)):
@@ -600,7 +600,7 @@ def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, report_snvs=False
                          snv["pos"] = genome_aln_pos + i + 1
                          snv["ref"] = ref_seq[ref_idx + i : ref_idx + i + 1]
                          snv["alt"] = read_seq[read_idx + i : read_idx + i + 1]
-                         
+
                          snvs.append(snv)
 
                      i += 1
@@ -608,7 +608,7 @@ def findall_indels(ref_aln, genome_aln_pos, ref_seq, read_seq, report_snvs=False
             ref_idx += event_len
             read_idx += event_len
             genome_aln_pos += event_len
-            
+
 
     rt_clipped = read_seq[read_idx:]
     for indel in indels:
