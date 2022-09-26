@@ -1,9 +1,27 @@
+import os
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
-from Cython.Build import cythonize
-from Cython.Distutils import build_ext
-from pysam import get_include as pysam_get_include
-import os
+
+def pip_install(pkg_name):
+    import subprocess
+    subprocess.check_call(
+        ["python", "-m", "pip", "install", pkg_name], stdout=subprocess.DEVNULL
+    )
+
+try:
+    from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+except ImportError:
+    pip_install("cython")
+
+    from Cython.Build import cythonize
+    from Cython.Distutils import build_ext
+
+try:
+    from pysam import get_include as pysam_get_include
+except ImportError:
+    pip_install("pysam")
+    from pysam import get_include as pysam_get_include
 
 # ssw-py: source files to include in installation for tar.gz
 PACKAGE_PATH = os.path.abspath(os.path.dirname(__file__))
