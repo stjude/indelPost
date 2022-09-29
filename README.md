@@ -14,7 +14,7 @@ users write their own scripts to solve alignment-sensitive problems such as:
 
 Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
 
-To install (require Linux with Python>=3.6 pre-installed):
+To install (require Linux with Python>=3.8 pre-installed):
 ```
 pip install indelpost --no-binary indelpost --no-build-isolation
 ```

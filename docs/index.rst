@@ -26,12 +26,11 @@ Installing indelPost also installs the dependency:
     - numpy>=1.16.0
     - pysam>=0.15.0
     - cython>=0.29.12
-    - ssw-py>=0.2.6
 
 
 .. note::
     
-    indelPost is supported for Linux with Python>=3.6.
+    indelPost is supported for Linux with Python>=3.8.
 
 Contents
 --------
