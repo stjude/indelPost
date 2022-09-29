@@ -1,6 +1,5 @@
 # indelPost specific
 indelpost/setup.py
-indelpost/*.c
 tests/
 
 # Byte-compiled / optimized / DLL files

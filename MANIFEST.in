@@ -1,3 +1,6 @@
 include requirements.txt
 include indelpost/*.pyx
 include indelpost/*.pxd
+include indelpost/sse2neon.h
+include indelpost/ssw.c
+include indelpost/ssw.h
