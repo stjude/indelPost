@@ -26,7 +26,7 @@ Installing indelPost also installs the dependency:
 
 .. note::
     
-    indelPost is supported for Linux with Python>=3.8.
+    indelPost is supported for Linux with Python>=3.6.
 
 Contents
 --------
