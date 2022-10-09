@@ -1,5 +1,15 @@
 # indelPost specific
 indelpost/setup.py
+indelpost/contig.c
+indelpost/gappedaln.c
+indelpost/local_reference.c
+indelpost/localn.c
+indelpost/pileup.c
+indelpost/softclip.c
+indelpost/utilities.c
+indelpost/varaln.c
+indelpost/variant.c
+
 tests/
 
 # Byte-compiled / optimized / DLL files
