@@ -16,34 +16,12 @@ Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
 
 To install (require Linux with Python>=3.8 pre-installed):
 ```
-pip install indelpost --no-binary indelpost --no-build-isolation
+git clone https://github.com/stjude/indelPost.git
+cd indelPost 
+python setup.py install
 ```
+Installation via PyPI to be supported.
 
-## Troubleshoot
-If you have installation errors related to [ssw-py](https://github.com/Wyss/ssw-py),
-try installing separately by:
-```
-pip install ssw-py
-```
-or
-[from source](https://github.com/stjude/indelPost/issues/2#issuecomment-1121163296)<br />
-or
-[from tar](https://github.com/stjude/indelPost/issues/2#issuecomment-1122645068).<br />  
-
-If you get something like:
-```
-... may indicate binary incompatibility. Expected 88 from C header, got 72 from PyObject
-```
-or
-```
-AttributeError: module 'pysam.libcalignmentfile' has no attribute 'IteratorColumnAll'
-```
-try:
-```
-pip uninstall cython pysam indelpost
-pip install cython pysam
-pip install indelpost --no-binary indelpost --no-build-isolation
-```
 
 ## Reference
 Hagiwara K et al. (2022) indelPost: harmonizing ambiguities in simple and complex indel alignments. [Bioinformatics](https://doi.org/10.1093/bioinformatics/btab601)
