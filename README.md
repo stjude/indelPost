@@ -25,7 +25,7 @@ cd indelPost
 python setup.py install
 ```
 
-##Troubleshoot
+## Troubleshoot
 If you get something like:
 ```
 ... may indicate binary incompatibility. Expected 88 from C header, got 72 from PyObject
