@@ -9,6 +9,7 @@ indelpost/softclip.c
 indelpost/utilities.c
 indelpost/varaln.c
 indelpost/variant.c
+indelpost/sswpy.c
 
 tests/
 
