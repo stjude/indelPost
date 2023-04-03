@@ -16,7 +16,7 @@ Visit [documentation](https://indelpost.readthedocs.io/en/latest) for detail.
 
 To install (require Linux with Python>=3.6 pre-installed):
 ```
-pip install indelpost --no-binary indelpost --no-build-isolation
+pip install indelpost
 ```
 or from source
 ```

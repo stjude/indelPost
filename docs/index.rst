@@ -38,5 +38,6 @@ Contents
    api.rst
    examples.rst
    benchmark.rst
+   snv_mnv.rst
 
 * :ref:`genindex`
