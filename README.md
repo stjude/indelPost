@@ -1,7 +1,7 @@
 # indelPost
 
 [![Documentation Status](https://readthedocs.org/projects/indelpost/badge/?version=latest)](https://indelpost.readthedocs.io/en/latest/?badge=latest)
-[![PyPI version](https://badge.fury.io/py/indelpost.png)](https://badge.fury.io/py/indelpost)
+[![PyPI version](https://badge.fury.io/py/indelpost.svg)](https://badge.fury.io/py/indelpost)
 
 indelPost is a Python library for indel processing via realignment and read-based phasing to resolve alignment ambiguities. By importing the library, 
 users write their own scripts to solve alignment-sensitive problems such as:
