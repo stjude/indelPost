@@ -1115,7 +1115,7 @@ def right_aligner(read, target):
             read["lt_cigar"], read["rt_cigar"] = split_cigar(read["cigar_string"], target.pos, read["read_start"])
     except:
         pass
-
+    
     return read
 
 
