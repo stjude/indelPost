@@ -16,6 +16,11 @@ import os
 import sys
 _libdir = "../build/lib.%s-%s-%s.%s" % (os.uname()[0].lower(), os.uname()[4], sys.version_info[0], sys.version_info[1])
 
+import subprocess
+pkg_name = "sphinx-rtd-theme"
+subprocess.check_call(
+    ["python", "-m", "pip", "install", pkg_name], stdout=subprocess.DEVNULL
+)
 
 if os.path.exists(_libdir):
     sys.path.insert(0, os.path.abspath(_libdir))
